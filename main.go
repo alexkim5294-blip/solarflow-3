@@ -11,29 +11,24 @@ import (
 )
 
 func main() {
-	// 설정 로드
 	cfg := config.Load()
 
-	// Supabase 연결
 	db, err := supa.NewClient(cfg.SupabaseURL, cfg.SupabaseKey, &supa.ClientOptions{})
 	if err != nil {
 		log.Fatalf("❌ Supabase 연결 실패: %v", err)
 	}
 	log.Println("✅ Supabase 연결 성공")
 
-	// 라우터 생성 (모든 API 경로가 여기서 등록됨)
 	r := router.New(db)
 
-	// 서버 시작
-	log.Printf("🚀 서버 시작: :%s", cfg.Port)
-	log.Printf("📋 API 목록:")
-	log.Printf("   GET  /health")
-	log.Printf("   GET  /api/v1/companies")
-	log.Printf("   POST /api/v1/companies")
-	log.Printf("   GET  /api/v1/companies/{id}")
-	log.Printf("   PUT  /api/v1/companies/{id}")
-	log.Printf("   GET  /api/v1/manufacturers")
-	log.Printf("   POST /api/v1/manufacturers")
+	log.Printf("🚀 SolarFlow 3.0 서버 시작: :%s", cfg.Port)
+	log.Printf("📋 마스터 API (6개 모듈, 각 CRUD):")
+	log.Printf("   /api/v1/companies      — 법인")
+	log.Printf("   /api/v1/manufacturers   — 제조사")
+	log.Printf("   /api/v1/products        — 품번")
+	log.Printf("   /api/v1/partners        — 거래처")
+	log.Printf("   /api/v1/warehouses      — 창고/장소")
+	log.Printf("   /api/v1/banks           — 은행")
 
 	log.Fatal(http.ListenAndServe(":"+cfg.Port, r))
 }

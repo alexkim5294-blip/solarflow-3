@@ -14,9 +14,13 @@ import (
 func New(db *supa.Client) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.CORS)
+
+	// 비유: /health는 건물 밖에서도 볼 수 있는 안내판 — 인증 불필요
 	r.Get("/health", handler.HealthCheck)
 
 	r.Route("/api/v1", func(r chi.Router) {
+		// 비유: /api/v1 이하 모든 경로는 사원증(JWT) 필수
+		r.Use(middleware.AuthMiddleware(db))
 
 		companyH := handler.NewCompanyHandler(db)
 		r.Route("/companies", func(r chi.Router) {

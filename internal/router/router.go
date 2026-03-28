@@ -116,6 +116,30 @@ func New(db *supa.Client) http.Handler {
 				r.Delete("/{id}", blLineH.Delete)
 			})
 		})
+
+		declH := handler.NewDeclarationHandler(db)
+		r.Route("/declarations", func(r chi.Router) {
+			r.Get("/", declH.List)
+			r.Post("/", declH.Create)
+			r.Get("/{id}", declH.GetByID)
+			r.Put("/{id}", declH.Update)
+		})
+
+		costH := handler.NewCostDetailHandler(db)
+		r.Route("/cost-details", func(r chi.Router) {
+			r.Get("/", costH.List)
+			r.Post("/", costH.Create)
+			r.Get("/{id}", costH.GetByID)
+			r.Put("/{id}", costH.Update)
+		})
+
+		expenseH := handler.NewExpenseHandler(db)
+		r.Route("/expenses", func(r chi.Router) {
+			r.Get("/", expenseH.List)
+			r.Post("/", expenseH.Create)
+			r.Get("/{id}", expenseH.GetByID)
+			r.Put("/{id}", expenseH.Update)
+		})
 	})
 
 	return r

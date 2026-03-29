@@ -140,6 +140,29 @@ func New(db *supa.Client) http.Handler {
 			r.Get("/{id}", expenseH.GetByID)
 			r.Put("/{id}", expenseH.Update)
 		})
+
+		orderH := handler.NewOrderHandler(db)
+		r.Route("/orders", func(r chi.Router) {
+			r.Get("/", orderH.List)
+			r.Post("/", orderH.Create)
+			r.Get("/{id}", orderH.GetByID)
+			r.Put("/{id}", orderH.Update)
+		})
+
+		receiptH := handler.NewReceiptHandler(db)
+		r.Route("/receipts", func(r chi.Router) {
+			r.Get("/", receiptH.List)
+			r.Post("/", receiptH.Create)
+			r.Get("/{id}", receiptH.GetByID)
+			r.Put("/{id}", receiptH.Update)
+		})
+
+		matchH := handler.NewReceiptMatchHandler(db)
+		r.Route("/receipt-matches", func(r chi.Router) {
+			r.Get("/", matchH.List)
+			r.Post("/", matchH.Create)
+			r.Delete("/{id}", matchH.Delete)
+		})
 	})
 
 	return r

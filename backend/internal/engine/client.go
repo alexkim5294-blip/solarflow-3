@@ -113,3 +113,69 @@ func (c *EngineClient) CallCalc(path string, reqBody interface{}) ([]byte, error
 
 	return body, nil
 }
+
+// inventoryRequest — Rust 재고 집계 요청 구조체
+// 비유: "재고 조회 신청서" — Go에서 Rust로 보내는 요청
+type inventoryRequest struct {
+	CompanyID      string  `json:"company_id"`
+	ProductID      *string `json:"product_id,omitempty"`
+	ManufacturerID *string `json:"manufacturer_id,omitempty"`
+}
+
+// GetInventory — Rust 재고 집계 API 호출
+// 비유: "계산실에 재고 현황판 요청서를 보내고 결과를 받아오는 것"
+func (c *EngineClient) GetInventory(companyID string, productID, manufacturerID *string) (InventoryResponse, error) {
+	req := inventoryRequest{
+		CompanyID:      companyID,
+		ProductID:      productID,
+		ManufacturerID: manufacturerID,
+	}
+
+	data, err := c.CallCalc("inventory", req)
+	if err != nil {
+		return InventoryResponse{}, err
+	}
+
+	var result InventoryResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		log.Printf("[재고 집계 응답 파싱 실패] %v", err)
+		return InventoryResponse{}, fmt.Errorf("재고 집계 응답 파싱 실패: %w", err)
+	}
+
+	return result, nil
+}
+
+// InventoryResponse — Rust 재고 집계 응답 (engine 패키지 내부 사용)
+type InventoryResponse struct {
+	Items        []InventoryItem  `json:"items"`
+	Summary      InventorySummary `json:"summary"`
+	CalculatedAt string           `json:"calculated_at"`
+}
+
+// InventoryItem — 품번별 재고 상세
+type InventoryItem struct {
+	ProductID          string  `json:"product_id"`
+	ProductCode        string  `json:"product_code"`
+	ProductName        string  `json:"product_name"`
+	ManufacturerName   string  `json:"manufacturer_name"`
+	SpecWP             int     `json:"spec_wp"`
+	ModuleWidthMM      int     `json:"module_width_mm"`
+	ModuleHeightMM     int     `json:"module_height_mm"`
+	PhysicalKW         float64 `json:"physical_kw"`
+	ReservedKW         float64 `json:"reserved_kw"`
+	AllocatedKW        float64 `json:"allocated_kw"`
+	AvailableKW        float64 `json:"available_kw"`
+	IncomingKW         float64 `json:"incoming_kw"`
+	IncomingReservedKW float64 `json:"incoming_reserved_kw"`
+	AvailableIncomingKW float64 `json:"available_incoming_kw"`
+	TotalSecuredKW     float64 `json:"total_secured_kw"`
+	LongTermStatus     string  `json:"long_term_status"`
+}
+
+// InventorySummary — 전체 합계
+type InventorySummary struct {
+	TotalPhysicalKW  float64 `json:"total_physical_kw"`
+	TotalAvailableKW float64 `json:"total_available_kw"`
+	TotalIncomingKW  float64 `json:"total_incoming_kw"`
+	TotalSecuredKW   float64 `json:"total_secured_kw"`
+}

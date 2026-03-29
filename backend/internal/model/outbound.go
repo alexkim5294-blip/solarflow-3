@@ -18,18 +18,28 @@ type Outbound struct {
 	GroupTrade      *bool    `json:"group_trade"`
 	TargetCompanyID *string  `json:"target_company_id"`
 	ErpOutboundNo   *string  `json:"erp_outbound_no"`
+	Status          string   `json:"status"`
 	Memo            *string  `json:"memo"`
 }
 
-// 허용되는 출고 usage_category 값 (B/L 라인과 동일)
+// 허용되는 출고 usage_category 값 (ERP 관리구분 기반 재설계)
 var validOutboundUsageCategories = map[string]bool{
-	"sale":         true,
-	"construction": true,
-	"spare":        true,
-	"replacement":  true,
-	"repowering":   true,
-	"transfer":     true,
-	"adjustment":   true,
+	"sale":                true,
+	"sale_spare":          true,
+	"construction":        true,
+	"construction_damage": true,
+	"maintenance":         true,
+	"disposal":            true,
+	"transfer":            true,
+	"adjustment":          true,
+	"other":               true,
+}
+
+// 허용되는 출고 status 값 (3단계: 활성/취소대기/취소완료)
+var validOutboundStatuses = map[string]bool{
+	"active":         true,
+	"cancel_pending": true,
+	"cancelled":      true,
 }
 
 // CreateOutboundRequest — 출고 등록 시 클라이언트가 보내는 데이터
@@ -49,6 +59,7 @@ type CreateOutboundRequest struct {
 	GroupTrade      *bool    `json:"group_trade"`
 	TargetCompanyID *string  `json:"target_company_id"`
 	ErpOutboundNo   *string  `json:"erp_outbound_no"`
+	Status          string   `json:"status"`
 	Memo            *string  `json:"memo"`
 }
 
@@ -74,7 +85,11 @@ func (req *CreateOutboundRequest) Validate() string {
 		return "usage_category는 필수 항목입니다"
 	}
 	if !validOutboundUsageCategories[req.UsageCategory] {
-		return "usage_category는 \"sale\", \"construction\", \"spare\", \"replacement\", \"repowering\", \"transfer\", \"adjustment\" 중 하나여야 합니다"
+		return "usage_category는 허용된 값이 아닙니다 (sale/sale_spare/construction/construction_damage/maintenance/disposal/transfer/adjustment/other)"
+	}
+	// 비유: status는 기본값 "active" — 입력 시에만 검증
+	if req.Status != "" && !validOutboundStatuses[req.Status] {
+		return "status는 \"active\", \"cancel_pending\", \"cancelled\" 중 하나여야 합니다"
 	}
 	if req.SpareQty != nil && *req.SpareQty <= 0 {
 		return "spare_qty는 양수여야 합니다"
@@ -103,6 +118,7 @@ type UpdateOutboundRequest struct {
 	GroupTrade      *bool    `json:"group_trade,omitempty"`
 	TargetCompanyID *string  `json:"target_company_id,omitempty"`
 	ErpOutboundNo   *string  `json:"erp_outbound_no,omitempty"`
+	Status          *string  `json:"status,omitempty"`
 	Memo            *string  `json:"memo,omitempty"`
 }
 
@@ -121,7 +137,10 @@ func (req *UpdateOutboundRequest) Validate() string {
 		return "warehouse_id는 빈 값으로 변경할 수 없습니다"
 	}
 	if req.UsageCategory != nil && !validOutboundUsageCategories[*req.UsageCategory] {
-		return "usage_category는 \"sale\", \"construction\", \"spare\", \"replacement\", \"repowering\", \"transfer\", \"adjustment\" 중 하나여야 합니다"
+		return "usage_category는 허용된 값이 아닙니다 (sale/sale_spare/construction/construction_damage/maintenance/disposal/transfer/adjustment/other)"
+	}
+	if req.Status != nil && !validOutboundStatuses[*req.Status] {
+		return "status는 \"active\", \"cancel_pending\", \"cancelled\" 중 하나여야 합니다"
 	}
 	if req.SpareQty != nil && *req.SpareQty <= 0 {
 		return "spare_qty는 양수여야 합니다"

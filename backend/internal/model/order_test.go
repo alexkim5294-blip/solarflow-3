@@ -98,6 +98,56 @@ func TestOrderValidate_DepositRateOver100(t *testing.T) {
 	}
 }
 
+// TestOrderValidate_InvalidManagementCategory — 허용되지 않은 management_category일 때 에러 반환 확인
+func TestOrderValidate_InvalidManagementCategory(t *testing.T) {
+	req := validOrderRequest()
+	req.ManagementCategory = "donation"
+	msg := req.Validate()
+	if msg == "" {
+		t.Fatal("잘못된 ManagementCategory에 대해 에러가 반환되어야 합니다")
+	}
+	if !strings.Contains(msg, "management_category") {
+		t.Fatalf("에러 메시지에 'management_category'가 포함되어야 합니다, got: %s", msg)
+	}
+}
+
+// TestOrderValidate_InvalidFulfillmentSource — 허용되지 않은 fulfillment_source일 때 에러 반환 확인
+func TestOrderValidate_InvalidFulfillmentSource(t *testing.T) {
+	req := validOrderRequest()
+	req.FulfillmentSource = "factory"
+	msg := req.Validate()
+	if msg == "" {
+		t.Fatal("잘못된 FulfillmentSource에 대해 에러가 반환되어야 합니다")
+	}
+	if !strings.Contains(msg, "fulfillment_source") {
+		t.Fatalf("에러 메시지에 'fulfillment_source'가 포함되어야 합니다, got: %s", msg)
+	}
+}
+
+// TestOrderValidate_ConstructionWithIncoming — construction + incoming 조합 성공 확인
+func TestOrderValidate_ConstructionWithIncoming(t *testing.T) {
+	req := validOrderRequest()
+	req.ManagementCategory = "construction"
+	req.FulfillmentSource = "incoming"
+	msg := req.Validate()
+	if msg != "" {
+		t.Fatalf("construction+incoming 정상 데이터에서 에러가 반환되면 안 됩니다, got: %s", msg)
+	}
+}
+
+// TestOrderValidate_AllManagementCategories — 6개 management_category 각각 성공 확인
+func TestOrderValidate_AllManagementCategories(t *testing.T) {
+	categories := []string{"sale", "construction", "spare", "repowering", "maintenance", "other"}
+	for _, cat := range categories {
+		req := validOrderRequest()
+		req.ManagementCategory = cat
+		msg := req.Validate()
+		if msg != "" {
+			t.Fatalf("management_category=%s 정상 데이터에서 에러가 반환되면 안 됩니다, got: %s", cat, msg)
+		}
+	}
+}
+
 // TestOrderValidate_Success — 정상 데이터일 때 빈 문자열 반환 확인
 func TestOrderValidate_Success(t *testing.T) {
 	req := validOrderRequest()

@@ -16,6 +16,22 @@ var validOrderStatuses = map[string]bool{
 	"cancelled": true,
 }
 
+// 허용되는 management_category 값
+var validManagementCategories = map[string]bool{
+	"sale":         true,
+	"construction": true,
+	"spare":        true,
+	"repowering":   true,
+	"maintenance":  true,
+	"other":        true,
+}
+
+// 허용되는 fulfillment_source 값
+var validFulfillmentSources = map[string]bool{
+	"stock":    true,
+	"incoming": true,
+}
+
 // Order — 수주(판매 주문) 정보를 담는 구조체
 // 비유: "수주 계약서" — 어느 고객이, 어떤 품번을, 몇 장, 얼마에 주문했는지 기록
 type Order struct {
@@ -38,9 +54,11 @@ type Order struct {
 	DeliveryDue   *string  `json:"delivery_due"`
 	ShippedQty    *int     `json:"shipped_qty"`
 	RemainingQty  *int     `json:"remaining_qty"`
-	Status        string   `json:"status"`
-	SpareQty      *int     `json:"spare_qty"`
-	Memo          *string  `json:"memo"`
+	Status             string   `json:"status"`
+	ManagementCategory string   `json:"management_category"`
+	FulfillmentSource  string   `json:"fulfillment_source"`
+	SpareQty           *int     `json:"spare_qty"`
+	Memo               *string  `json:"memo"`
 }
 
 // CreateOrderRequest — 수주 등록 시 클라이언트가 보내는 데이터
@@ -62,9 +80,11 @@ type CreateOrderRequest struct {
 	PaymentTerms  *string  `json:"payment_terms"`
 	DepositRate   *float64 `json:"deposit_rate"`
 	DeliveryDue   *string  `json:"delivery_due"`
-	Status        string   `json:"status"`
-	SpareQty      *int     `json:"spare_qty"`
-	Memo          *string  `json:"memo"`
+	Status             string   `json:"status"`
+	ManagementCategory string   `json:"management_category"`
+	FulfillmentSource  string   `json:"fulfillment_source"`
+	SpareQty           *int     `json:"spare_qty"`
+	Memo               *string  `json:"memo"`
 }
 
 // Validate — 수주 등록 요청의 입력값을 검증
@@ -100,6 +120,14 @@ func (req *CreateOrderRequest) Validate() string {
 	if !validOrderStatuses[req.Status] {
 		return "status는 \"received\", \"partial\", \"completed\", \"cancelled\" 중 하나여야 합니다"
 	}
+	// 비유: management_category는 기본값 "sale" — 입력 시에만 검증
+	if req.ManagementCategory != "" && !validManagementCategories[req.ManagementCategory] {
+		return "management_category는 \"sale\", \"construction\", \"spare\", \"repowering\", \"maintenance\", \"other\" 중 하나여야 합니다"
+	}
+	// 비유: fulfillment_source는 기본값 "stock" — 입력 시에만 검증
+	if req.FulfillmentSource != "" && !validFulfillmentSources[req.FulfillmentSource] {
+		return "fulfillment_source는 \"stock\", \"incoming\" 중 하나여야 합니다"
+	}
 	if req.DepositRate != nil && (*req.DepositRate < 0 || *req.DepositRate > 100) {
 		return "deposit_rate는 0~100 범위여야 합니다"
 	}
@@ -130,9 +158,11 @@ type UpdateOrderRequest struct {
 	DeliveryDue   *string  `json:"delivery_due,omitempty"`
 	ShippedQty    *int     `json:"shipped_qty,omitempty"`
 	RemainingQty  *int     `json:"remaining_qty,omitempty"`
-	Status        *string  `json:"status,omitempty"`
-	SpareQty      *int     `json:"spare_qty,omitempty"`
-	Memo          *string  `json:"memo,omitempty"`
+	Status             *string  `json:"status,omitempty"`
+	ManagementCategory *string  `json:"management_category,omitempty"`
+	FulfillmentSource  *string  `json:"fulfillment_source,omitempty"`
+	SpareQty           *int     `json:"spare_qty,omitempty"`
+	Memo               *string  `json:"memo,omitempty"`
 }
 
 // Validate — 수주 수정 요청의 입력값을 검증
@@ -157,6 +187,12 @@ func (req *UpdateOrderRequest) Validate() string {
 	}
 	if req.Status != nil && !validOrderStatuses[*req.Status] {
 		return "status는 \"received\", \"partial\", \"completed\", \"cancelled\" 중 하나여야 합니다"
+	}
+	if req.ManagementCategory != nil && !validManagementCategories[*req.ManagementCategory] {
+		return "management_category는 \"sale\", \"construction\", \"spare\", \"repowering\", \"maintenance\", \"other\" 중 하나여야 합니다"
+	}
+	if req.FulfillmentSource != nil && !validFulfillmentSources[*req.FulfillmentSource] {
+		return "fulfillment_source는 \"stock\", \"incoming\" 중 하나여야 합니다"
 	}
 	if req.DepositRate != nil && (*req.DepositRate < 0 || *req.DepositRate > 100) {
 		return "deposit_rate는 0~100 범위여야 합니다"

@@ -63,3 +63,38 @@
 - **결정**: 19개 UpdateRequest 구조체의 모든 포인터 필드에 `json:",omitempty"` 태그 일괄 적용
 - **이유**: UpdateRequest의 포인터 필드에 omitempty가 없으면 null 필드도 DB에 전송되어 의도치 않은 덮어쓰기 가능. 부분 업데이트 시 전송하지 않은 필드가 null로 초기화되는 문제 방지.
 - **날짜**: 2026-03-29
+
+## D-013: 출고 취소 3단계 (active/cancel_pending/cancelled)
+- **결정**: 출고 상태를 active → cancel_pending → cancelled 3단계로 관리
+- **이유**: 실무자가 취소 여부를 즉시 결정 못할 수 있음. cancel_pending은 가용재고 미차감. 실무자가 판단 후 삭제 또는 복원.
+- **날짜**: 2026-03-29
+
+## D-014: ERP 관리구분과 usage_category 일치
+- **결정**: 출고 usage_category를 ERP 관리구분 기반으로 재설계 (기존 7개 → 9개)
+- **이유**: ERP 내보내기 시 매핑 정확성. ERP 1,881건 분석 기반으로 재설계. replacement는 construction_damage로 대체. repowering은 outbounds에서 제거, orders.management_category에는 유지.
+- **날짜**: 2026-03-29
+
+## D-015: 수주 충당 소스 구분 (fulfillment_source: stock/incoming)
+- **결정**: 수주에 fulfillment_source 컬럼 추가 (stock/incoming)
+- **이유**: 미착품에도 판매/공사 예약이 걸릴 수 있음. "총확보량"이 실제보다 부풀려지는 것을 방지. 실무자가 "이 수주는 미착품에서 충당"이라는 의사결정을 기록.
+- **날짜**: 2026-03-29
+
+## D-016: Axum 선택
+- **결정**: Rust 웹 프레임워크로 Axum 채택
+- **이유**: SolarFlow 계산엔진은 극한 성능이 아닌 정확한 계산이 목적. Tokio 팀 제작, 타입 안전, 메모리 효율 최고, 학습 곡선 완만. sqlx/serde 등 Tokio 생태계와 자연스럽게 통합.
+- **날짜**: 2026-03-29
+
+## D-017: sqlx 직접 연결 (pgBouncer 아닌 이유)
+- **결정**: Supabase PostgreSQL에 sqlx로 직접 연결 (pgBouncer 미사용)
+- **이유**: sqlx는 prepared statements 사용. pgBouncer transaction mode에서 세션 간 유지 안 됨. 직접 연결이 안전. 풀 5개로 Free 플랜 내 운영.
+- **날짜**: 2026-03-29
+
+## D-018: Cargo.lock 커밋
+- **결정**: Cargo.lock을 .gitignore에 넣지 않고 커밋
+- **이유**: Rust 공식 권장 — 바이너리 프로젝트는 Cargo.lock을 커밋해야 빌드 재현성(reproducibility) 보장.
+- **날짜**: 2026-03-29
+
+## D-019: /health와 /health/ready 분리
+- **결정**: 헬스체크를 /health(서버 생존)와 /health/ready(DB 연결)로 분리
+- **이유**: /health는 fly.io 헬스체크용 (항상 200, DB 무관). /health/ready는 DB 연결 확인용 (Go에서 Rust 호출 전 상태 확인). DB 장애 시 서버는 살아있지만 계산은 불가능한 상태를 구분.
+- **날짜**: 2026-03-29

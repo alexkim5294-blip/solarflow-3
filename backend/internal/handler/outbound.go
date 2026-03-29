@@ -51,6 +51,11 @@ func (h *OutboundHandler) List(w http.ResponseWriter, r *http.Request) {
 		query = query.Eq("order_id", orderID)
 	}
 
+	// 비유: ?status=active — 특정 상태의 출고만 필터
+	if status := r.URL.Query().Get("status"); status != "" {
+		query = query.Eq("status", status)
+	}
+
 	data, _, err := query.Execute()
 	if err != nil {
 		log.Printf("[출고 목록 조회 실패] %v", err)
@@ -106,6 +111,11 @@ func (h *OutboundHandler) Create(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[출고 등록 요청 파싱 실패] %v", err)
 		response.RespondError(w, http.StatusBadRequest, "잘못된 요청 형식입니다")
 		return
+	}
+
+	// 비유: status 미입력이면 기본값 "active" 설정
+	if req.Status == "" {
+		req.Status = "active"
 	}
 
 	if msg := req.Validate(); msg != "" {

@@ -84,6 +84,42 @@ func TestOutboundValidate_GroupTradeWithTarget(t *testing.T) {
 	}
 }
 
+// TestOutboundValidate_InvalidStatus — 허용되지 않은 status일 때 에러 반환 확인
+func TestOutboundValidate_InvalidStatus(t *testing.T) {
+	req := validOutboundRequest()
+	req.Status = "invalid_status"
+	msg := req.Validate()
+	if msg == "" {
+		t.Fatal("잘못된 Status에 대해 에러가 반환되어야 합니다")
+	}
+	if !strings.Contains(msg, "status") {
+		t.Fatalf("에러 메시지에 'status'가 포함되어야 합니다, got: %s", msg)
+	}
+}
+
+// TestOutboundValidate_InvalidUsageCategory_Old — 기존 값(replacement)이 거부되는지 확인
+func TestOutboundValidate_InvalidUsageCategory_Old(t *testing.T) {
+	req := validOutboundRequest()
+	req.UsageCategory = "replacement"
+	msg := req.Validate()
+	if msg == "" {
+		t.Fatal("기존 값 'replacement'에 대해 에러가 반환되어야 합니다")
+	}
+}
+
+// TestOutboundValidate_NewUsageCategories — 새 usage_category 값 각각 성공 확인
+func TestOutboundValidate_NewUsageCategories(t *testing.T) {
+	newCategories := []string{"sale_spare", "construction_damage", "maintenance", "disposal", "other"}
+	for _, cat := range newCategories {
+		req := validOutboundRequest()
+		req.UsageCategory = cat
+		msg := req.Validate()
+		if msg != "" {
+			t.Fatalf("usage_category=%s 정상 데이터에서 에러가 반환되면 안 됩니다, got: %s", cat, msg)
+		}
+	}
+}
+
 // TestOutboundValidate_Success — 정상 데이터일 때 빈 문자열 반환 확인
 func TestOutboundValidate_Success(t *testing.T) {
 	req := validOutboundRequest()

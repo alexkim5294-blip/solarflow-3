@@ -50,6 +50,16 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 		query = query.Eq("product_id", prodID)
 	}
 
+	// 비유: ?management_category=sale — 관리구분 필터
+	if mgmtCat := r.URL.Query().Get("management_category"); mgmtCat != "" {
+		query = query.Eq("management_category", mgmtCat)
+	}
+
+	// 비유: ?fulfillment_source=stock — 충당 소스 필터
+	if source := r.URL.Query().Get("fulfillment_source"); source != "" {
+		query = query.Eq("fulfillment_source", source)
+	}
+
 	data, _, err := query.Execute()
 	if err != nil {
 		log.Printf("[수주 목록 조회 실패] %v", err)
@@ -105,6 +115,15 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[수주 등록 요청 파싱 실패] %v", err)
 		response.RespondError(w, http.StatusBadRequest, "잘못된 요청 형식입니다")
 		return
+	}
+
+	// 비유: management_category 미입력이면 기본값 "sale" 설정
+	if req.ManagementCategory == "" {
+		req.ManagementCategory = "sale"
+	}
+	// 비유: fulfillment_source 미입력이면 기본값 "stock" 설정
+	if req.FulfillmentSource == "" {
+		req.FulfillmentSource = "stock"
 	}
 
 	if msg := req.Validate(); msg != "" {

@@ -40,14 +40,17 @@
 | Step 15: LC 수수료 + 한도 복원 + 만기 알림 | — | 9/10 | 2026-03-29 |
 | Step 16: 마진/이익률 + 거래처 + 단가 추이 | — | 9/10 | 2026-03-29 |
 | Step 17: 월별 수급 전망 (6개월) | — | 9/10 | 2026-03-29 |
-| Step 18: 수금 매칭 자동 추천 | — | — | 2026-03-29 |
+| Step 18: 수금 매칭 자동 추천 | — | 9/10 | 2026-03-29 |
+| Step 19: 자연어 검색 엔진 (Phase 3 마지막) | — | — | 2026-03-29 |
+
+### Phase 3 완료 ✅
 
 ### 다음 작업 (순서대로)
 1. Phase 4: 프론트엔드 + 엑셀 Import/Export
 
 ### 자동 검증 현황
-- Go 테스트: 77개 PASS (model 58 + engine 19)
-- Rust 테스트: 50개 PASS (health 1 + inventory 3 + landed_cost 5 + lc_schedule 8 + margin 9 + forecast 9 + receipt_match 15)
+- Go 테스트: 78개 PASS (model 58 + engine 20)
+- Rust 테스트: 75개 PASS (health 1 + inventory 3 + landed_cost 5 + lc_schedule 8 + margin 9 + forecast 9 + receipt_match 15 + search 25)
 - 린터: 위반 0건
 - CI: .github/workflows/ci.yml 설정 완료
 - omitempty: 19개 UpdateRequest 구조체 일괄 적용 완료

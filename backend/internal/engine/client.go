@@ -620,3 +620,31 @@ func (c *EngineClient) SuggestReceiptMatch(companyID, customerID string, receipt
 	}
 	return result, nil
 }
+
+// === 자연어 검색 ===
+
+// searchCalcRequest — Rust 검색 요청
+type searchCalcRequest struct {
+	CompanyID string `json:"company_id"`
+	Query     string `json:"query"`
+}
+
+// SearchCalcResponse — 검색 응답 (engine 간략)
+type SearchCalcResponse struct {
+	Query        string `json:"query"`
+	Intent       string `json:"intent"`
+	CalculatedAt string `json:"calculated_at"`
+}
+
+// Search — Rust 검색 API 호출
+func (c *EngineClient) Search(companyID, query string) (SearchCalcResponse, error) {
+	req := searchCalcRequest{CompanyID: companyID, Query: query}
+	data, err := c.CallCalc("search", req)
+	if err != nil { return SearchCalcResponse{}, err }
+	var result SearchCalcResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		log.Printf("[검색 응답 파싱 실패] %v", err)
+		return SearchCalcResponse{}, fmt.Errorf("검색 응답 파싱 실패: %w", err)
+	}
+	return result, nil
+}

@@ -6,6 +6,4 @@ pub mod margin;
 pub mod forecast;
 
 pub mod receipt_match;
-
-// 추후 추가 예정:
-// pub mod search;        — 자연어 검색 엔진
+pub mod search;

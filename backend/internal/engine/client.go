@@ -409,3 +409,149 @@ func (c *EngineClient) GetLcMaturityAlerts(companyID *string, daysAhead int) (Lc
 	}
 	return result, nil
 }
+
+// === 마진/거래처/단가 추이 ===
+
+// marginAnalysisCalcRequest — Rust 마진 분석 요청
+type marginAnalysisCalcRequest struct {
+	CompanyID      string  `json:"company_id"`
+	ManufacturerID *string `json:"manufacturer_id,omitempty"`
+	ProductID      *string `json:"product_id,omitempty"`
+	DateFrom       *string `json:"date_from,omitempty"`
+	DateTo         *string `json:"date_to,omitempty"`
+	CostBasis      string  `json:"cost_basis"`
+}
+
+// MarginCalcResponse — 마진 분석 응답 (engine 간략)
+type MarginCalcResponse struct {
+	Items        []MarginCalcItem    `json:"items"`
+	Summary      MarginCalcSummary   `json:"summary"`
+	CalculatedAt string              `json:"calculated_at"`
+}
+type MarginCalcItem struct {
+	ProductCode    string   `json:"product_code"`
+	AvgSalePriceWP float64  `json:"avg_sale_price_wp"`
+	MarginRate     *float64 `json:"margin_rate"`
+	TotalRevenueKRW float64 `json:"total_revenue_krw"`
+}
+type MarginCalcSummary struct {
+	OverallMarginRate float64 `json:"overall_margin_rate"`
+	CostBasis         string  `json:"cost_basis"`
+}
+
+// GetMarginAnalysis — Rust 마진 분석 API 호출
+func (c *EngineClient) GetMarginAnalysis(companyID string, mfgID, prodID, dateFrom, dateTo *string, costBasis string) (MarginCalcResponse, error) {
+	if costBasis == "" { costBasis = "cif" }
+	req := marginAnalysisCalcRequest{CompanyID: companyID, ManufacturerID: mfgID, ProductID: prodID, DateFrom: dateFrom, DateTo: dateTo, CostBasis: costBasis}
+	data, err := c.CallCalc("margin-analysis", req)
+	if err != nil { return MarginCalcResponse{}, err }
+	var result MarginCalcResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		log.Printf("[마진 분석 응답 파싱 실패] %v", err)
+		return MarginCalcResponse{}, fmt.Errorf("마진 분석 응답 파싱 실패: %w", err)
+	}
+	return result, nil
+}
+
+// customerAnalysisCalcRequest — Rust 거래처 분석 요청
+type customerAnalysisCalcRequest struct {
+	CompanyID  string  `json:"company_id"`
+	CustomerID *string `json:"customer_id,omitempty"`
+	DateFrom   *string `json:"date_from,omitempty"`
+	DateTo     *string `json:"date_to,omitempty"`
+}
+
+// CustomerCalcResponse — 거래처 분석 응답 (engine 간략)
+type CustomerCalcResponse struct {
+	Items        []CustomerCalcItem `json:"items"`
+	CalculatedAt string             `json:"calculated_at"`
+}
+type CustomerCalcItem struct {
+	CustomerName    string  `json:"customer_name"`
+	TotalSalesKRW   float64 `json:"total_sales_krw"`
+	OutstandingKRW  float64 `json:"outstanding_krw"`
+	Status          string  `json:"status"`
+}
+
+// GetCustomerAnalysis — Rust 거래처 분석 API 호출
+func (c *EngineClient) GetCustomerAnalysis(companyID string, customerID, dateFrom, dateTo *string) (CustomerCalcResponse, error) {
+	req := customerAnalysisCalcRequest{CompanyID: companyID, CustomerID: customerID, DateFrom: dateFrom, DateTo: dateTo}
+	data, err := c.CallCalc("customer-analysis", req)
+	if err != nil { return CustomerCalcResponse{}, err }
+	var result CustomerCalcResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		log.Printf("[거래처 분석 응답 파싱 실패] %v", err)
+		return CustomerCalcResponse{}, fmt.Errorf("거래처 분석 응답 파싱 실패: %w", err)
+	}
+	return result, nil
+}
+
+// priceTrendCalcRequest — Rust 단가 추이 요청
+type priceTrendCalcRequest struct {
+	CompanyID      string  `json:"company_id"`
+	ManufacturerID *string `json:"manufacturer_id,omitempty"`
+	ProductID      *string `json:"product_id,omitempty"`
+	Period         string  `json:"period"`
+}
+
+// PriceTrendCalcResponse — 단가 추이 응답 (engine 간략)
+type PriceTrendCalcResponse struct {
+	Trends       []TrendCalcProduct `json:"trends"`
+	CalculatedAt string             `json:"calculated_at"`
+}
+type TrendCalcProduct struct {
+	ManufacturerName string `json:"manufacturer_name"`
+	ProductName      string `json:"product_name"`
+	SpecWP           int    `json:"spec_wp"`
+}
+
+// GetPriceTrend — Rust 단가 추이 API 호출
+func (c *EngineClient) GetPriceTrend(companyID string, mfgID, prodID *string, period string) (PriceTrendCalcResponse, error) {
+	if period == "" { period = "quarterly" }
+	req := priceTrendCalcRequest{CompanyID: companyID, ManufacturerID: mfgID, ProductID: prodID, Period: period}
+	data, err := c.CallCalc("price-trend", req)
+	if err != nil { return PriceTrendCalcResponse{}, err }
+	var result PriceTrendCalcResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		log.Printf("[단가 추이 응답 파싱 실패] %v", err)
+		return PriceTrendCalcResponse{}, fmt.Errorf("단가 추이 응답 파싱 실패: %w", err)
+	}
+	return result, nil
+}
+
+// === 수급 전망 ===
+
+// forecastCalcRequest — Rust 수급 전망 요청
+type forecastCalcRequest struct {
+	CompanyID      string  `json:"company_id"`
+	ProductID      *string `json:"product_id,omitempty"`
+	ManufacturerID *string `json:"manufacturer_id,omitempty"`
+	MonthsAhead    int     `json:"months_ahead"`
+}
+
+// ForecastCalcResponse — 수급 전망 응답 (engine 간략)
+type ForecastCalcResponse struct {
+	Products     []ForecastCalcProduct `json:"products"`
+	CalculatedAt string                `json:"calculated_at"`
+}
+
+// ForecastCalcProduct — 품번별 전망 (간략)
+type ForecastCalcProduct struct {
+	ProductCode      string `json:"product_code"`
+	ManufacturerName string `json:"manufacturer_name"`
+	SpecWP           int    `json:"spec_wp"`
+}
+
+// GetSupplyForecast — Rust 수급 전망 API 호출
+func (c *EngineClient) GetSupplyForecast(companyID string, prodID, mfgID *string, monthsAhead int) (ForecastCalcResponse, error) {
+	if monthsAhead <= 0 { monthsAhead = 6 }
+	req := forecastCalcRequest{CompanyID: companyID, ProductID: prodID, ManufacturerID: mfgID, MonthsAhead: monthsAhead}
+	data, err := c.CallCalc("supply-forecast", req)
+	if err != nil { return ForecastCalcResponse{}, err }
+	var result ForecastCalcResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		log.Printf("[수급 전망 응답 파싱 실패] %v", err)
+		return ForecastCalcResponse{}, fmt.Errorf("수급 전망 응답 파싱 실패: %w", err)
+	}
+	return result, nil
+}

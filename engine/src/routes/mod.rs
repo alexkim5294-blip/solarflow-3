@@ -36,5 +36,9 @@ pub fn create_router(pool: PgPool) -> Router {
             "/api/calc/lc-maturity-alert",
             axum::routing::post(calc::lc_maturity_alert_handler),
         )
+        .route("/api/calc/margin-analysis", axum::routing::post(calc::margin_analysis_handler))
+        .route("/api/calc/customer-analysis", axum::routing::post(calc::customer_analysis_handler))
+        .route("/api/calc/price-trend", axum::routing::post(calc::price_trend_handler))
+        .route("/api/calc/supply-forecast", axum::routing::post(calc::supply_forecast_handler))
         .with_state(pool)
 }

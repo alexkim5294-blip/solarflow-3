@@ -9,9 +9,13 @@ use sqlx::PgPool;
 use crate::calc::inventory::calculate_inventory;
 use crate::calc::landed_cost::{calculate_landed_cost, compare_exchange_rates};
 use crate::calc::lc_schedule::{calculate_lc_fees, calculate_limit_timeline, get_maturity_alerts};
+use crate::calc::margin::{calculate_margin, analyze_customers, calculate_price_trend};
+use crate::calc::forecast::calculate_forecast;
 use crate::model::inventory::InventoryRequest;
 use crate::model::landed_cost::{ExchangeCompareRequest, LandedCostRequest};
 use crate::model::lc_schedule::{LcFeeRequest, LcLimitTimelineRequest, LcMaturityAlertRequest};
+use crate::model::margin::{MarginAnalysisRequest, CustomerAnalysisRequest, PriceTrendRequest};
+use crate::model::forecast::SupplyForecastRequest;
 
 /// POST /api/calc/inventory — 재고 집계 핸들러
 pub async fn inventory_handler(
@@ -130,5 +134,41 @@ pub async fn lc_maturity_alert_handler(
     match get_maturity_alerts(&pool, &req).await {
         Ok(r) => (StatusCode::OK, Json(serde_json::to_value(r).unwrap_or(json!({"error": "직렬화 실패"})))),
         Err(e) => { tracing::error!("만기 알림 실패: {}", e); (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("만기 알림 실패: {}", e)}))) }
+    }
+}
+
+/// POST /api/calc/margin-analysis — 마진 분석 핸들러
+pub async fn margin_analysis_handler(State(pool): State<PgPool>, Json(req): Json<MarginAnalysisRequest>) -> (StatusCode, Json<Value>) {
+    if req.company_id.is_none() { return (StatusCode::BAD_REQUEST, Json(json!({"error": "company_id는 필수 항목입니다"}))); }
+    match calculate_margin(&pool, &req).await {
+        Ok(r) => (StatusCode::OK, Json(serde_json::to_value(r).unwrap_or(json!({"error": "직렬화 실패"})))),
+        Err(e) => { tracing::error!("마진 분석 실패: {}", e); (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("마진 분석 실패: {}", e)}))) }
+    }
+}
+
+/// POST /api/calc/customer-analysis — 거래처 분석 핸들러
+pub async fn customer_analysis_handler(State(pool): State<PgPool>, Json(req): Json<CustomerAnalysisRequest>) -> (StatusCode, Json<Value>) {
+    if req.company_id.is_none() { return (StatusCode::BAD_REQUEST, Json(json!({"error": "company_id는 필수 항목입니다"}))); }
+    match analyze_customers(&pool, &req).await {
+        Ok(r) => (StatusCode::OK, Json(serde_json::to_value(r).unwrap_or(json!({"error": "직렬화 실패"})))),
+        Err(e) => { tracing::error!("거래처 분석 실패: {}", e); (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("거래처 분석 실패: {}", e)}))) }
+    }
+}
+
+/// POST /api/calc/price-trend — 단가 추이 핸들러
+pub async fn price_trend_handler(State(pool): State<PgPool>, Json(req): Json<PriceTrendRequest>) -> (StatusCode, Json<Value>) {
+    if req.company_id.is_none() { return (StatusCode::BAD_REQUEST, Json(json!({"error": "company_id는 필수 항목입니다"}))); }
+    match calculate_price_trend(&pool, &req).await {
+        Ok(r) => (StatusCode::OK, Json(serde_json::to_value(r).unwrap_or(json!({"error": "직렬화 실패"})))),
+        Err(e) => { tracing::error!("단가 추이 실패: {}", e); (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("단가 추이 실패: {}", e)}))) }
+    }
+}
+
+/// POST /api/calc/supply-forecast — 월별 수급 전망 핸들러
+pub async fn supply_forecast_handler(State(pool): State<PgPool>, Json(req): Json<SupplyForecastRequest>) -> (StatusCode, Json<Value>) {
+    if req.company_id.is_none() { return (StatusCode::BAD_REQUEST, Json(json!({"error": "company_id는 필수 항목입니다"}))); }
+    match calculate_forecast(&pool, &req).await {
+        Ok(r) => (StatusCode::OK, Json(serde_json::to_value(r).unwrap_or(json!({"error": "직렬화 실패"})))),
+        Err(e) => { tracing::error!("수급 전망 실패: {}", e); (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": format!("수급 전망 실패: {}", e)}))) }
     }
 }

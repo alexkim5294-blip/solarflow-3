@@ -1,6 +1,6 @@
 # SolarFlow 진행 상황
 
-## 현재 단계: Phase 3 진행 중 → Step 16 (마진/이익률 분석) 대기
+## 현재 단계: Phase 3 진행 중 → Step 18 (수금 매칭 자동 추천) 대기
 
 ## 완료된 작업
 
@@ -37,15 +37,17 @@
 | Step 12: Go↔Rust 통신 테스트 | — | 10/10 | 2026-03-29 |
 | Step 13: 재고 집계 API (Rust 첫 구현) | — | 9/10 | 2026-03-29 |
 | Step 14: Landed Cost + 환율 환산 | — | 9/10 | 2026-03-29 |
-| Step 15: LC 수수료 + 한도 복원 + 만기 알림 | — | — | 2026-03-29 |
+| Step 15: LC 수수료 + 한도 복원 + 만기 알림 | — | 9/10 | 2026-03-29 |
+| Step 16: 마진/이익률 + 거래처 + 단가 추이 | — | 9/10 | 2026-03-29 |
+| Step 17: 월별 수급 전망 (6개월) | — | — | 2026-03-29 |
 
 ### 다음 작업 (순서대로)
-1. Step 16: 마진/이익률 분석 모듈
+1. Step 18: 수금 매칭 자동 추천
 2. Phase 4: 프론트엔드 + 엑셀 Import/Export
 
 ### 자동 검증 현황
-- Go 테스트: 71개 PASS (model 58 + engine 13)
-- Rust 테스트: 17개 PASS (health 1 + inventory 3 + landed_cost 5 + lc_schedule 8)
+- Go 테스트: 75개 PASS (model 58 + engine 17)
+- Rust 테스트: 35개 PASS (health 1 + inventory 3 + landed_cost 5 + lc_schedule 8 + margin 9 + forecast 9)
 - 린터: 위반 0건
 - CI: .github/workflows/ci.yml 설정 완료
 - omitempty: 19개 UpdateRequest 구조체 일괄 적용 완료

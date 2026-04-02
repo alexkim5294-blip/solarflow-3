@@ -196,6 +196,15 @@ func New(db *supa.Client, engineClient ...*engine.EngineClient) http.Handler {
 			r.Put("/{id}", priceH.Update)
 		})
 
+		// 비유: 포스트잇 메모 관리 (Step 31)
+		noteH := handler.NewNoteHandler(db)
+		r.Route("/notes", func(r chi.Router) {
+			r.Get("/", noteH.List)
+			r.Post("/", noteH.Create)
+			r.Put("/{id}", noteH.Update)
+			r.Delete("/{id}", noteH.Delete)
+		})
+
 		// 비유: 아마란스10 ERP 내보내기 — 입고/출고 .xlsx (Step 29C)
 		exportH := handler.NewExportHandler(db)
 		r.Route("/export/amaranth", func(r chi.Router) {

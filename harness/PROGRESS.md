@@ -5,14 +5,14 @@
 | 항목 | 상태 |
 |------|------|
 | 현재 Phase | Phase 4 진행 중 |
-| 다음 작업 | Step 31 — 메모 + 검색 + 알림 |
+| 다음 작업 | Step 32 — 배포 + 실데이터 검증 |
 | Go 백엔드 | 배포 완료 (solarflow-backend.fly.dev) |
 | Rust 엔진 | 배포 완료 (solarflow-engine.fly.dev) |
-| 프론트엔드 | Step 30 완료 (재고+입고+발주+출고+수주수금+면장원가+은행LC+대시보드+엑셀7종+Import확정등록+아마란스내보내기+결재안6유형) |
+| 프론트엔드 | Step 31 완료 (재고+입고+발주+출고+수주수금+면장원가+은행LC+대시보드+엑셀7종+Import확정등록+아마란스+결재안+메모+검색+알림) |
 | DB 테이블 | 20개 생성 완료 |
-| Go 테스트 | 108개 PASS |
+| Go 테스트 | 116개 PASS |
 | Rust 테스트 | 75개 PASS |
-| 총 테스트 | 183개 PASS |
+| 총 테스트 | 191개 PASS |
 | Rust API | 15개 엔드포인트 |
 | Go CalcProxy | 15개 엔드포인트 (프론트→Go→Rust) |
 | 감리 점수 | Phase 2: 9-10/10, Phase 3: 전부 10/10 |
@@ -89,6 +89,7 @@
 | Step 29B: 엑셀 확정 등록 + Import API 7개 | 감리 대기 | 29A즉시수정(통화하드코딩), 지적1(매출outbound_id), 지적2(면장+원가한번에전송), 지적3(B/L기본정보불일치경고), Go Import핸들러7개(inbound/outbound/sales/declarations/expenses/orders/receipts), FK해소+자동계산, ImportResultDialog, ConfirmDialog, 테스트13개PASS |
 | Step 29C: 아마란스10 내보내기 | 감리 대기 | 입고34컬럼+출고35컬럼 excelize, GET /export/amaranth/inbound·outbound, 거래구분/과세구분 매핑, 외화단가/원화단가 자동계산, 기간선택 AmaranthExportDialog, D-067/D-068 |
 | Step 30: 결재안 자동 생성 6유형 | 감리 대기 | 6유형카드선택, LC/BL/PO/거래처 기반 데이터조회, 수입통관부가세(CIF×0.1), approvalTemplates 텍스트생성, 미리보기Textarea수정, 클립보드복사, 수동입력(노란배경), Go변경없음 |
+| Step 31: 메모+검색+알림 | 감리 대기 | Go Note CRUD(소유권검사), 포스트잇 MemoPage+LinkedMemoWidget, Ctrl+K GlobalSearchBar(500ms디바운스), Rust search API연동, SearchPage(이력+예시), useAlerts 분리(useDashboard에서 추출), AlertBell+AlertDropdown, 5분자동갱신, 테스트8개 |
 
 #### Phase 4 남은 작업
 - 아마란스10 내보내기

@@ -11,7 +11,10 @@ echo "=== RULES.md 위반 검출 시작 ==="
 echo ""
 
 # 검출 대상 파일 목록 (internal/ 하위 .go, _test.go 제외)
-FILES=$(find internal/ -name '*.go' ! -name '*_test.go' -type f)
+# D-065: handler/import.go, model/import.go는 map[string]interface{} 허용 — 린터 예외
+FILES=$(find internal/ -name '*.go' ! -name '*_test.go' -type f \
+    ! -path 'internal/handler/import.go' \
+    ! -path 'internal/model/import.go')
 
 # 1. map[string]interface 사용 검출
 echo "[검사 1] map[string]interface 사용 여부"

@@ -196,6 +196,18 @@ func New(db *supa.Client, engineClient ...*engine.EngineClient) http.Handler {
 			r.Put("/{id}", priceH.Update)
 		})
 
+		// 비유: 엑셀 일괄 등록 창구 — 7종 Import API (Step 29B)
+		importH := handler.NewImportHandler(db)
+		r.Route("/import", func(r chi.Router) {
+			r.Post("/inbound", importH.Inbound)
+			r.Post("/outbound", importH.Outbound)
+			r.Post("/sales", importH.Sales)
+			r.Post("/declarations", importH.Declarations)
+			r.Post("/expenses", importH.Expenses)
+			r.Post("/orders", importH.Orders)
+			r.Post("/receipts", importH.Receipts)
+		})
+
 		// 비유: "내 인사카드 보기" — 로그인한 사용자의 프로필 조회
 		userH := handler.NewUserHandler(db)
 		r.Get("/users/me", userH.GetMe)

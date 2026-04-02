@@ -1,0 +1,41 @@
+package model
+
+// ImportResponse — 엑셀 Import API의 공통 응답 구조체
+// 비유: "일괄 등록 결과 보고서" — 성공/에러/경고 건수와 상세 내역
+type ImportResponse struct {
+	Success       bool            `json:"success"`
+	ImportedCount int             `json:"imported_count"`
+	ErrorCount    int             `json:"error_count"`
+	WarningCount  int             `json:"warning_count"`
+	Errors        []ImportError   `json:"errors"`
+	Warnings      []ImportWarning `json:"warnings"`
+}
+
+// ImportError — Import 시 개별 행의 에러 정보
+// 비유: "에러 스티커" — 몇 행, 어떤 필드에, 무슨 문제가 있는지 기록
+type ImportError struct {
+	Row     int    `json:"row"`
+	Field   string `json:"field"`
+	Message string `json:"message"`
+}
+
+// ImportWarning — Import 시 개별 행의 경고 정보
+// 비유: "경고 메모" — 에러는 아니지만 주의가 필요한 사항
+type ImportWarning struct {
+	Row     int    `json:"row"`
+	Field   string `json:"field"`
+	Message string `json:"message"`
+}
+
+// ImportRowsRequest — 일반 Import 요청 (행 배열)
+// 비유: "일괄 등록 신청서" — 여러 행을 한 번에 등록
+type ImportRowsRequest struct {
+	Rows []map[string]interface{} `json:"rows"`
+}
+
+// DeclarationImportRequest — 면장+원가 통합 Import 요청 (지적 2 반영)
+// 비유: "면장+원가 일괄 등록 신청서" — 면장과 원가를 한 번에 전송
+type DeclarationImportRequest struct {
+	Declarations []map[string]interface{} `json:"declarations"`
+	Costs        []map[string]interface{} `json:"costs"`
+}

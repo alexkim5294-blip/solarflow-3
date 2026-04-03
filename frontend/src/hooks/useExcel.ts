@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { fetchWithAuth } from '@/lib/api';
+import { useAppStore } from '@/stores/appStore';
 import type {
   TemplateType, MasterDataForExcel, ImportPreview, DeclarationImportPreview,
   ImportResult,
@@ -16,12 +17,12 @@ export function useExcel(type: TemplateType) {
   const [declPreview, setDeclPreview] = useState<DeclarationImportPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const companies = useAppStore((s) => s.companies);
 
   // 마스터 데이터 로드
   useEffect(() => {
     let cancelled = false;
     const fetches: Promise<any[]>[] = [
-      fetchWithAuth<any[]>('/api/v1/companies'),
       fetchWithAuth<any[]>('/api/v1/manufacturers'),
       fetchWithAuth<any[]>('/api/v1/products'),
       fetchWithAuth<any[]>('/api/v1/partners'),
@@ -31,10 +32,10 @@ export function useExcel(type: TemplateType) {
     if (type === 'sale') {
       fetches.push(fetchWithAuth<any[]>('/api/v1/outbounds?status=active'));
     }
-    Promise.all(fetches).then(([companies, manufacturers, products, partners, warehouses, outbounds]) => {
+    Promise.all(fetches).then(([manufacturers, products, partners, warehouses, outbounds]) => {
       if (cancelled) return;
       setMasterData({
-        companies: companies.filter((c: any) => c.is_active),
+        companies,
         manufacturers: manufacturers.filter((m: any) => m.is_active),
         products: products.filter((p: any) => p.is_active),
         partners: partners.filter((p: any) => p.is_active),
@@ -45,7 +46,7 @@ export function useExcel(type: TemplateType) {
       if (!cancelled) setError('마스터 데이터 로딩 실패');
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [companies]);
 
   // 양식 다운로드
   const downloadTemplate = useCallback(async () => {

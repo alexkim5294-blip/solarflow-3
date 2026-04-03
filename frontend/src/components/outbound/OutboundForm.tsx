@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAppStore } from '@/stores/appStore';
 import { fetchWithAuth } from '@/lib/api';
 import { USAGE_CATEGORY_LABEL, type Outbound, type UsageCategory } from '@/types/outbound';
-import type { Product, Warehouse, Company } from '@/types/masters';
+import type { Product, Warehouse } from '@/types/masters';
 
 const schema = z.object({
   outbound_date: z.string().min(1, '출고일은 필수입니다'),
@@ -40,9 +40,9 @@ interface Props {
 
 export default function OutboundForm({ open, onOpenChange, onSubmit, editData }: Props) {
   const selectedCompanyId = useAppStore((s) => s.selectedCompanyId);
+  const companies = useAppStore((s) => s.companies);
   const [products, setProducts] = useState<Product[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [companies, setCompanies] = useState<Company[]>([]);
   const [orders, setOrders] = useState<{ order_id: string; order_number: string; remaining_qty?: number }[]>([]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -63,8 +63,6 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData }:
       .then((list) => setProducts(list.filter((p) => p.is_active))).catch(() => {});
     fetchWithAuth<Warehouse[]>('/api/v1/warehouses')
       .then((list) => setWarehouses(list.filter((w) => w.is_active))).catch(() => {});
-    fetchWithAuth<Company[]>('/api/v1/companies')
-      .then((list) => setCompanies(list.filter((c) => c.is_active))).catch(() => {});
   }, []);
 
   // 수주 목록 로드 (법인 기준)

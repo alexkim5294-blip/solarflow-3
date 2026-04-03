@@ -1,9 +1,6 @@
 // D-060: "전체(all)" 법인 선택 시 다중 법인 조회 지원
 import { fetchWithAuth } from './api';
-import type { Company } from '@/types/masters';
-
-let cachedCompanyIds: string[] | null = null;
-let cacheTimer: ReturnType<typeof setTimeout> | null = null;
+import { useAppStore } from '@/stores/appStore';
 
 /** "all"이거나 falsy이면 전체 법인 모드 */
 export function isAllCompanies(id: string | null): boolean {
@@ -23,14 +20,14 @@ export function companyQueryUrl(base: string, companyId: string | null): string 
   return `${base}${sep}company_id=${companyId}`;
 }
 
-/** 활성 법인 ID 목록 (5분 캐시) */
+/** 활성 법인 ID 목록 — appStore에서 가져옴 (중복 호출 제거) */
 async function getActiveCompanyIds(): Promise<string[]> {
-  if (cachedCompanyIds) return cachedCompanyIds;
-  const companies = await fetchWithAuth<Company[]>('/api/v1/companies');
-  cachedCompanyIds = companies.filter((c) => c.is_active).map((c) => c.company_id);
-  if (cacheTimer) clearTimeout(cacheTimer);
-  cacheTimer = setTimeout(() => { cachedCompanyIds = null; }, 5 * 60 * 1000);
-  return cachedCompanyIds;
+  const store = useAppStore.getState();
+  if (store.companiesLoaded) {
+    return store.companies.map((c) => c.company_id);
+  }
+  await store.loadCompanies();
+  return useAppStore.getState().companies.map((c) => c.company_id);
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -8,8 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { fetchWithAuth } from '@/lib/api';
-import type { Bank, Company } from '@/types/masters';
+import { useAppStore } from '@/stores/appStore';
+import type { Bank } from '@/types/masters';
 
 const schema = z.object({
   company_id: z.string().min(1, '법인은 필수입니다'),
@@ -30,17 +30,11 @@ interface Props {
 }
 
 export default function BankForm({ open, onOpenChange, onSubmit, editData }: Props) {
-  const [companies, setCompanies] = useState<Company[]>([]);
+  const companies = useAppStore((s) => s.companies);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema) as any,
   });
-
-  useEffect(() => {
-    fetchWithAuth<Company[]>('/api/v1/companies')
-      .then((list) => setCompanies(list.filter((c) => c.is_active)))
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     if (open) {

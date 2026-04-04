@@ -6,7 +6,19 @@
 }
 
 :5173 {
-    root * /Users/chnops.ak/solarflow-3/frontend/dist
-    file_server
-    try_files {path} /index.html
+    handle /rest/v1/* {
+        uri strip_prefix /rest/v1
+        reverse_proxy localhost:3000
+    }
+    handle /api/* {
+        reverse_proxy localhost:8080
+    }
+    handle /health {
+        reverse_proxy localhost:8080
+    }
+    handle {
+        root * /Users/chnops.ak/solarflow-3/frontend/dist
+        try_files {path} /index.html
+        file_server
+    }
 }

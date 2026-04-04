@@ -27,9 +27,7 @@ function defaultTo(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || (
-  import.meta.env.PROD ? 'https://solarflow-backend.fly.dev' : ''
-);
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 export default function AmaranthExportDialog({ type, open, onClose }: Props) {
   const [from, setFrom] = useState(defaultFrom);

@@ -16,7 +16,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://solarflow-backend.fly.dev',
+        target: 'http://localhost:8080',
         changeOrigin: true,
       }
     }

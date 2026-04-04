@@ -1,9 +1,7 @@
 import { supabase } from './supabase';
 
 // API 기본 URL — 개발에서는 프록시, 운영에서는 직접 연결
-const API_BASE_URL = import.meta.env.VITE_API_URL || (
-  import.meta.env.PROD ? 'https://solarflow-backend.fly.dev' : ''
-);
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 // fetchWithAuth — Supabase 세션 토큰을 자동 첨부하는 fetch 래퍼
 // 401 응답 시 자동 로그아웃

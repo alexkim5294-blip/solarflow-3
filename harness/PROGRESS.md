@@ -1,14 +1,15 @@
 # SolarFlow 진행 상황
 
-## 현재 상태 요약 (최종 업데이트: 2026-04-03)
+## 현재 상태 요약 (최종 업데이트: 2026-04-04)
 
 | 항목 | 상태 |
 |------|------|
-| 현재 Phase | **Phase 4 완료** |
+| 현재 Phase | **Phase 4 완료 + 인프라 이전 완료** |
 | 다음 작업 | Phase 확장 — 실데이터 기반 개선 |
-| Go 백엔드 | 배포 완료 (solarflow-backend.fly.dev) |
-| Rust 엔진 | 배포 완료 (solarflow-engine.fly.dev) |
-| 프론트엔드 | 배포 완료 (solarflow-3-frontend.pages.dev) |
+| Go 백엔드 | AWS Lightsail 서울 (api.solarflow3.com) |
+| Rust 엔진 | AWS Lightsail 서울 (api.solarflow3.com) |
+| 프론트엔드 | Cloudflare Pages (app.solarflow3.com) |
+| 인프라 | 직접 바이너리 + systemd + Caddy 리버스 프록시 (D-072~D-074) |
 | DB 테이블 | 22개 생성 완료 (user_profiles, notes 포함) |
 | Go 테스트 | 116개 PASS |
 | Rust 테스트 | 75개 PASS |
@@ -17,6 +18,7 @@
 | Go CalcProxy | 15개 엔드포인트 (프론트→Go→Rust) |
 | 인증 | ES256 JWKS + HMAC 폴백 (D-069) |
 | RLS | 전체 비활성화 (D-070) |
+| 대시보드 로딩 | 6초 → 2초 (companies 중복제거 + API 병렬화) |
 | 감리 점수 | Phase 2: 9-10/10, Phase 3: 전부 10/10 |
 
 ### Phase 확장 미해결 사항
@@ -96,3 +98,4 @@
 | Step 30: 결재안 자동 생성 6유형 | 감리 대기 | 6유형카드선택, LC/BL/PO/거래처 기반 데이터조회, 수입통관부가세(CIF×0.1), approvalTemplates 텍스트생성, 미리보기Textarea수정, 클립보드복사, 수동입력(노란배경), Go변경없음 |
 | Step 31: 메모+검색+알림 | 감리 대기 | Go Note CRUD(소유권검사), 포스트잇 MemoPage+LinkedMemoWidget, Ctrl+K GlobalSearchBar(500ms디바운스), Rust search API연동, SearchPage(이력+예시), useAlerts 분리(useDashboard에서 추출), AlertBell+AlertDropdown, 5분자동갱신, 테스트8개 |
 | Step 32: 배포+검증 | ✅ 완료 | ES256 JWKS인증(D-069), RLS비활성화(D-070), 전체법인합산(D-071), user_profiles 컬럼명 정렬, 구형파일삭제, 프론트Cloudflare+Go/Rust fly.io 3레이어 배포완료 |
+| Step 33: Lightsail 서울 이전 | ✅ 완료 | Fly.io 도쿄→AWS Lightsail 서울(D-072), solarflow3.com 도메인(D-073), Caddy 리버스프록시+자동SSL(D-074), 직접바이너리+systemd, Docker미사용, 대시보드6초→2초 |

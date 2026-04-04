@@ -366,3 +366,18 @@
 - **범위**: lib/companyUtils.ts (fetchCalc, companyParams, companyQueryUrl), useDashboard, useAlerts, useInventory, useBanking, useForecast, useLCDemand, useSearch + CRUD hooks 10개.
 - **법인 캐시**: 5분 TTL. getActiveCompanyIds()에서 GET /api/v1/companies 호출 결과 캐시.
 - **날짜**: 2026-04-03
+
+## D-072: AWS Lightsail 서울 리전 이전
+- **결정**: Fly.io 도쿄 → AWS Lightsail 서울 리전으로 Go 백엔드 + Rust 엔진 이전. 직접 바이너리 + systemd 서비스. Docker 미사용.
+- **이유**: (1) Fly.io 도쿄 리전은 한국에서 RTT 50-80ms, Lightsail 서울은 2-5ms (2) 직접 바이너리가 Docker 대비 메모리/디스크 절약 (3) systemd가 프로세스 재시작/로그 관리를 안정적으로 처리 (4) Lightsail 서울 $5/월 인스턴스로 충분.
+- **날짜**: 2026-04-04
+
+## D-073: 도메인 solarflow3.com 설정
+- **결정**: api.solarflow3.com = Go 백엔드 + Rust 엔진 (Lightsail), app.solarflow3.com = 프론트엔드 (Cloudflare Pages).
+- **이유**: (1) 서브도메인으로 역할 분리 (2) api.는 Caddy→Go(:8080)→Rust(:8081) 내부 통신 (3) app.는 Cloudflare Pages CNAME — CDN 캐싱 + DDoS 보호.
+- **날짜**: 2026-04-04
+
+## D-074: Caddy 리버스 프록시 + 자동 SSL
+- **결정**: Caddy를 api.solarflow3.com의 리버스 프록시로 사용. HTTPS 자동 발급/갱신.
+- **이유**: (1) Let's Encrypt 인증서를 자동 발급/갱신 — 수동 관리 불필요 (2) 설정 파일 2-3줄로 리버스 프록시 완성 (3) Nginx 대비 설정 복잡도 1/10 (4) HTTP/2, OCSP stapling 기본 지원.
+- **날짜**: 2026-04-04

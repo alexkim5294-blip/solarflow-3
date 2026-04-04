@@ -30,7 +30,7 @@ func (h *BankHandler) List(w http.ResponseWriter, r *http.Request) {
 		Select("*, companies(company_name, company_code)", "exact", false)
 
 	// 비유: ?company_id=xxx — 특정 법인의 은행만 필터
-	if compID := r.URL.Query().Get("company_id"); compID != "" {
+	if compID := r.URL.Query().Get("company_id"); compID != "" && compID != "all" {
 		query = query.Eq("company_id", compID)
 	}
 

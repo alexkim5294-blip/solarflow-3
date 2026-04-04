@@ -43,7 +43,7 @@ func (h *LCHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 비유: ?company_id=xxx — 특정 법인의 LC만 필터
-	if compID := r.URL.Query().Get("company_id"); compID != "" {
+	if compID := r.URL.Query().Get("company_id"); compID != "" && compID != "all" {
 		query = query.Eq("company_id", compID)
 	}
 

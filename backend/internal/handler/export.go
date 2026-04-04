@@ -251,7 +251,7 @@ func (h *ExportHandler) AmaranthInbound(w http.ResponseWriter, r *http.Request) 
 	// status 필터: completed 또는 erp_done
 	query = query.In("status", []string{"completed", "erp_done"})
 
-	if companyID != "" {
+	if companyID != "" && companyID != "all" {
 		query = query.Eq("company_id", companyID)
 	}
 
@@ -545,7 +545,7 @@ func (h *ExportHandler) AmaranthOutbound(w http.ResponseWriter, r *http.Request)
 		Select("outbound_id, outbound_date, quantity, site_name, memo, products(product_code), warehouses(warehouse_code, location_code)", "exact", false).
 		Eq("status", "active")
 
-	if companyID != "" {
+	if companyID != "" && companyID != "all" {
 		query = query.Eq("company_id", companyID)
 	}
 	if fromDate != "" {

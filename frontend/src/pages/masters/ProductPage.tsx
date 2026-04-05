@@ -6,7 +6,7 @@ import StatusBadge from '@/components/common/StatusBadge';
 import ProductForm from '@/components/masters/ProductForm';
 import { fetchWithAuth } from '@/lib/api';
 import { formatWp, formatSize } from '@/lib/utils';
-import type { Product } from '@/types/masters';
+import type { Product, Manufacturer } from '@/types/masters';
 
 // 감리 지적 2번: 제조사→크기→규격 다중 키 정렬
 function sortProducts(items: Product[]): Product[] {
@@ -21,6 +21,8 @@ function sortProducts(items: Product[]): Product[] {
 
 export default function ProductPage() {
   const [data, setData] = useState<Product[]>([]);
+  const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
+  const [filterMfg, setFilterMfg] = useState('');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -29,8 +31,15 @@ export default function ProductPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await fetchWithAuth<Product[]>('/api/v1/products');
-      setData(list);
+      const [products, mfgs] = await Promise.all([
+        fetchWithAuth<Product[]>('/api/v1/products'),
+        fetchWithAuth<Manufacturer[]>('/api/v1/manufacturers'),
+      ]);
+      setData(products.map((p) => ({
+        ...p,
+        manufacturer_name: mfgs.find((m) => m.manufacturer_id === p.manufacturer_id)?.name_kr ?? '',
+      })));
+      setManufacturers(mfgs.filter((m) => m.is_active));
     } catch { /* empty */ }
     setLoading(false);
   }, []);
@@ -39,6 +48,9 @@ export default function ProductPage() {
 
   const filtered = useMemo(() => {
     let items = data;
+    if (filterMfg) {
+      items = items.filter((p) => p.manufacturer_id === filterMfg);
+    }
     if (search) {
       const lower = search.toLowerCase();
       items = items.filter((p) =>
@@ -48,7 +60,7 @@ export default function ProductPage() {
       );
     }
     return sortProducts(items);
-  }, [data, search]);
+  }, [data, search, filterMfg]);
 
   const handleSubmit = async (formData: Record<string, unknown>) => {
     if (editTarget) {
@@ -73,9 +85,21 @@ export default function ProductPage() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">품번 관리</h1>
-        <Button size="sm" onClick={() => { setEditTarget(null); setFormOpen(true); }}>
-          <Plus className="mr-1.5 h-4 w-4" />새로 등록
-        </Button>
+        <div className="flex items-center gap-2">
+          <select
+            className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+            value={filterMfg}
+            onChange={(e) => setFilterMfg(e.target.value)}
+          >
+            <option value="">전체 제조사</option>
+            {manufacturers.map((m) => (
+              <option key={m.manufacturer_id} value={m.manufacturer_id}>{m.name_kr}</option>
+            ))}
+          </select>
+          <Button size="sm" onClick={() => { setEditTarget(null); setFormOpen(true); }}>
+            <Plus className="mr-1.5 h-4 w-4" />새로 등록
+          </Button>
+        </div>
       </div>
       <DataTable
         columns={columns} data={filtered} loading={loading}

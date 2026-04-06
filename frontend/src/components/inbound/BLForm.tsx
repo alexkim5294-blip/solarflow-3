@@ -226,7 +226,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
       setSelMfgId(d.manufacturer_id);
       setSelWhId(d.warehouse_id ?? '');
       setAutoNumber(d.bl_number);
-      setPt(parsePT((d as any).payment_terms ?? ''));
+      setPt(parsePT(d.payment_terms ?? ''));
       reset({
         inbound_type: d.inbound_type,
         bl_number: d.bl_number,
@@ -236,7 +236,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
         actual_arrival: d.actual_arrival?.slice(0, 10) ?? '',
         port: d.port ?? '', forwarder: d.forwarder ?? '',
         warehouse_id: d.warehouse_id ?? '', invoice_number: d.invoice_number ?? '',
-        incoterms: (d as any).incoterms ?? '', memo: d.memo ?? '',
+        incoterms: d.incoterms ?? '', memo: d.memo ?? '',
       });
     } else {
       const cid = globalCompanyId && globalCompanyId !== 'all' ? globalCompanyId : '';

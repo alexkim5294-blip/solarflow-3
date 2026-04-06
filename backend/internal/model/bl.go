@@ -5,25 +5,28 @@ import "unicode/utf8"
 // BLShipment — B/L(입고/선적) 정보를 담는 구조체
 // 비유: "선적 서류" — 어떤 화물이, 어디서 어디로, 언제 도착하는지 기록
 type BLShipment struct {
-	BLID            string  `json:"bl_id"`
-	BLNumber        string  `json:"bl_number"`
-	POID            *string `json:"po_id"`
-	LCID            *string `json:"lc_id"`
-	CompanyID       string  `json:"company_id"`
-	ManufacturerID  string  `json:"manufacturer_id"`
-	InboundType     string  `json:"inbound_type"`
-	Currency        string  `json:"currency"`
-	ExchangeRate    *float64 `json:"exchange_rate"`
-	ETD             *string `json:"etd"`
-	ETA             *string `json:"eta"`
-	ActualArrival   *string `json:"actual_arrival"`
-	Port            *string `json:"port"`
-	Forwarder       *string `json:"forwarder"`
-	WarehouseID     *string `json:"warehouse_id"`
-	InvoiceNumber   *string `json:"invoice_number"`
-	Status          string  `json:"status"`
-	ERPRegistered   *bool   `json:"erp_registered"`
-	Memo            *string `json:"memo"`
+	BLID                  string   `json:"bl_id"`
+	BLNumber              string   `json:"bl_number"`
+	POID                  *string  `json:"po_id"`
+	LCID                  *string  `json:"lc_id"`
+	CompanyID             string   `json:"company_id"`
+	ManufacturerID        string   `json:"manufacturer_id"`
+	InboundType           string   `json:"inbound_type"`
+	Currency              string   `json:"currency"`
+	ExchangeRate          *float64 `json:"exchange_rate"`
+	ETD                   *string  `json:"etd"`
+	ETA                   *string  `json:"eta"`
+	ActualArrival         *string  `json:"actual_arrival"`
+	Port                  *string  `json:"port"`
+	Forwarder             *string  `json:"forwarder"`
+	WarehouseID           *string  `json:"warehouse_id"`
+	InvoiceNumber         *string  `json:"invoice_number"`
+	Status                string   `json:"status"`
+	ERPRegistered         *bool    `json:"erp_registered"`
+	Memo                  *string  `json:"memo"`
+	PaymentTerms          *string  `json:"payment_terms"`
+	Incoterms             *string  `json:"incoterms"`
+	CounterpartCompanyID  *string  `json:"counterpart_company_id"`
 }
 
 // BLWithRelations — 법인/제조사/창고 정보를 포함한 B/L 목록 조회 결과
@@ -104,24 +107,27 @@ var validBLStatuses = map[string]bool{
 // CreateBLRequest — B/L 등록 시 클라이언트가 보내는 데이터
 // 비유: "선적 서류 등록 신청서" — B/L번호, 법인, 제조사, 유형을 필수 기재
 type CreateBLRequest struct {
-	BLNumber       string   `json:"bl_number"`
-	POID           *string  `json:"po_id"`
-	LCID           *string  `json:"lc_id"`
-	CompanyID      string   `json:"company_id"`
-	ManufacturerID string   `json:"manufacturer_id"`
-	InboundType    string   `json:"inbound_type"`
-	Currency       string   `json:"currency"`
-	ExchangeRate   *float64 `json:"exchange_rate"`
-	ETD            *string  `json:"etd"`
-	ETA            *string  `json:"eta"`
-	ActualArrival  *string  `json:"actual_arrival"`
-	Port           *string  `json:"port"`
-	Forwarder      *string  `json:"forwarder"`
-	WarehouseID    *string  `json:"warehouse_id"`
-	InvoiceNumber  *string  `json:"invoice_number"`
-	Status         string   `json:"status"`
-	ERPRegistered  *bool    `json:"erp_registered"`
-	Memo           *string  `json:"memo"`
+	BLNumber              string   `json:"bl_number"`
+	POID                  *string  `json:"po_id"`
+	LCID                  *string  `json:"lc_id"`
+	CompanyID             string   `json:"company_id"`
+	ManufacturerID        string   `json:"manufacturer_id"`
+	InboundType           string   `json:"inbound_type"`
+	Currency              string   `json:"currency"`
+	ExchangeRate          *float64 `json:"exchange_rate"`
+	ETD                   *string  `json:"etd"`
+	ETA                   *string  `json:"eta"`
+	ActualArrival         *string  `json:"actual_arrival"`
+	Port                  *string  `json:"port"`
+	Forwarder             *string  `json:"forwarder"`
+	WarehouseID           *string  `json:"warehouse_id"`
+	InvoiceNumber         *string  `json:"invoice_number"`
+	Status                string   `json:"status"`
+	ERPRegistered         *bool    `json:"erp_registered"`
+	Memo                  *string  `json:"memo"`
+	PaymentTerms          *string  `json:"payment_terms"`
+	Incoterms             *string  `json:"incoterms"`
+	CounterpartCompanyID  *string  `json:"counterpart_company_id"`
 }
 
 // Validate — B/L 등록 요청의 입력값을 검증
@@ -167,24 +173,27 @@ func (req *CreateBLRequest) Validate() string {
 // UpdateBLRequest — B/L 수정 시 클라이언트가 보내는 데이터
 // 비유: "선적 서류 변경 신청서" — 바꾸고 싶은 항목만 적어서 제출
 type UpdateBLRequest struct {
-	BLNumber       *string  `json:"bl_number,omitempty"`
-	POID           *string  `json:"po_id,omitempty"`
-	LCID           *string  `json:"lc_id,omitempty"`
-	CompanyID      *string  `json:"company_id,omitempty"`
-	ManufacturerID *string  `json:"manufacturer_id,omitempty"`
-	InboundType    *string  `json:"inbound_type,omitempty"`
-	Currency       *string  `json:"currency,omitempty"`
-	ExchangeRate   *float64 `json:"exchange_rate,omitempty"`
-	ETD            *string  `json:"etd,omitempty"`
-	ETA            *string  `json:"eta,omitempty"`
-	ActualArrival  *string  `json:"actual_arrival,omitempty"`
-	Port           *string  `json:"port,omitempty"`
-	Forwarder      *string  `json:"forwarder,omitempty"`
-	WarehouseID    *string  `json:"warehouse_id,omitempty"`
-	InvoiceNumber  *string  `json:"invoice_number,omitempty"`
-	Status         *string  `json:"status,omitempty"`
-	ERPRegistered  *bool    `json:"erp_registered,omitempty"`
-	Memo           *string  `json:"memo,omitempty"`
+	BLNumber              *string  `json:"bl_number,omitempty"`
+	POID                  *string  `json:"po_id,omitempty"`
+	LCID                  *string  `json:"lc_id,omitempty"`
+	CompanyID             *string  `json:"company_id,omitempty"`
+	ManufacturerID        *string  `json:"manufacturer_id,omitempty"`
+	InboundType           *string  `json:"inbound_type,omitempty"`
+	Currency              *string  `json:"currency,omitempty"`
+	ExchangeRate          *float64 `json:"exchange_rate,omitempty"`
+	ETD                   *string  `json:"etd,omitempty"`
+	ETA                   *string  `json:"eta,omitempty"`
+	ActualArrival         *string  `json:"actual_arrival,omitempty"`
+	Port                  *string  `json:"port,omitempty"`
+	Forwarder             *string  `json:"forwarder,omitempty"`
+	WarehouseID           *string  `json:"warehouse_id,omitempty"`
+	InvoiceNumber         *string  `json:"invoice_number,omitempty"`
+	Status                *string  `json:"status,omitempty"`
+	ERPRegistered         *bool    `json:"erp_registered,omitempty"`
+	Memo                  *string  `json:"memo,omitempty"`
+	PaymentTerms          *string  `json:"payment_terms,omitempty"`
+	Incoterms             *string  `json:"incoterms,omitempty"`
+	CounterpartCompanyID  *string  `json:"counterpart_company_id,omitempty"`
 }
 
 // Validate — B/L 수정 요청의 입력값을 검증

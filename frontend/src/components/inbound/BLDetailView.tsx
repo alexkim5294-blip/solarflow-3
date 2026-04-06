@@ -108,7 +108,10 @@ export default function BLDetailView({ blId, onBack }: Props) {
             {isImport && <Field label="항구" value={bl.port} />}
             {isImport && <Field label="포워더" value={bl.forwarder} />}
             {isImport && <Field label="Invoice No." value={bl.invoice_number} />}
+            {isImport && <Field label="인코텀즈" value={bl.incoterms} />}
             <Field label="입고 창고" value={bl.warehouse_name} />
+            {bl.payment_terms && <Field label="결제조건" value={bl.payment_terms} />}
+            {bl.counterpart_company_id && <Field label="상대법인" value={bl.counterpart_company_id} />}
             {bl.memo && <Field label="메모" value={bl.memo} />}
           </div>
         </CardContent>

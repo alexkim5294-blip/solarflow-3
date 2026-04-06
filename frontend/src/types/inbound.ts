@@ -23,6 +23,9 @@ export interface BLShipment {
   status: BLStatus;
   erp_registered?: boolean;
   memo?: string;
+  payment_terms?: string;
+  incoterms?: string;
+  counterpart_company_id?: string;
 }
 
 export interface BLLineItem {

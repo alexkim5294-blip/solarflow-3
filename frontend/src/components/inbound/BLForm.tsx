@@ -8,17 +8,29 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useAppStore } from '@/stores/appStore';
 import { fetchWithAuth } from '@/lib/api';
-import type { BLShipment, InboundType } from '@/types/inbound';
+import type { BLShipment } from '@/types/inbound';
 import type { Manufacturer, Product, Warehouse } from '@/types/masters';
 
+/* ── 입고유형 라벨 ── */
+const INBOUND_TYPES = [
+  { value: 'import', label: '해외직수입' },
+  { value: 'domestic', label: '국내구매' },
+  { value: 'group', label: '그룹내구매' },
+] as const;
+const inboundLabel = (v: string) => INBOUND_TYPES.find((t) => t.value === v)?.label ?? '';
+
+/* ── 인코텀즈 옵션 ── */
+const INCOTERMS = ['FOB', 'CIF', 'CFR', 'EXW', 'FCA', 'DAP', 'DDP', 'CIP'];
+
+/* ── Zod 스키마 ── */
 const schema = z.object({
   bl_number: z.string().min(1, 'B/L 번호는 필수입니다'),
   inbound_type: z.string().min(1, '입고유형은 필수입니다'),
   manufacturer_id: z.string().min(1, '제조사는 필수입니다'),
-  exchange_rate: z.coerce.number().positive('양수').optional().or(z.literal('')),
+  exchange_rate: z.string().optional(),
   etd: z.string().optional(),
   eta: z.string().optional(),
   actual_arrival: z.string().optional(),
@@ -26,28 +38,33 @@ const schema = z.object({
   forwarder: z.string().optional(),
   warehouse_id: z.string().optional(),
   invoice_number: z.string().optional(),
+  incoterms: z.string().optional(),
+  payment_terms: z.string().optional(),
   memo: z.string().optional(),
 });
 type FormData = z.infer<typeof schema>;
 
+/* ── 라인아이템 (문자열 기반 — 스피너 없이 자유 입력) ── */
 interface LineItem {
   product_id: string;
-  quantity: number | '';
+  quantity: string;
   item_type: 'main' | 'spare';
   payment_type: 'paid' | 'free';
-  invoice_amount_usd: number | '';
-  unit_price_usd_wp: number | '';
+  invoice_amount_usd: string;
+  unit_price_usd_wp: string;
 }
-
 const emptyLine = (): LineItem => ({
-  product_id: '',
-  quantity: '',
-  item_type: 'main',
-  payment_type: 'paid',
-  invoice_amount_usd: '',
-  unit_price_usd_wp: '',
+  product_id: '', quantity: '', item_type: 'main', payment_type: 'paid',
+  invoice_amount_usd: '', unit_price_usd_wp: '',
 });
 
+/* ── 트리거 표시용 헬퍼 (UUID 대신 한글 표시) ── */
+function TriggerText({ text, placeholder = '선택' }: { text: string; placeholder?: string }) {
+  if (text) return <span className="flex flex-1 text-left truncate" data-slot="select-value">{text}</span>;
+  return <span className="flex flex-1 text-left truncate text-muted-foreground" data-slot="select-value">{placeholder}</span>;
+}
+
+/* ── Props ── */
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -67,10 +84,11 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
     resolver: zodResolver(schema) as any,
   });
 
-  const inboundType = watch('inbound_type') as InboundType;
+  const inboundType = watch('inbound_type');
   const manufacturerId = watch('manufacturer_id');
-  const isImport = inboundType === 'import';
+  const warehouseId = watch('warehouse_id');
 
+  /* 마스터 데이터 로드 */
   useEffect(() => {
     fetchWithAuth<Manufacturer[]>('/api/v1/manufacturers')
       .then((list) => setManufacturers(list.filter((m) => m.is_active))).catch(() => {});
@@ -78,7 +96,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
       .then((list) => setWarehouses(list.filter((w) => w.is_active))).catch(() => {});
   }, []);
 
-  // 제조사 변경 시 해당 제조사 품번만 로드
+  /* 제조사 변경 → 해당 제조사 품번만 로드 */
   useEffect(() => {
     if (!manufacturerId) { setProducts([]); return; }
     fetchWithAuth<Product[]>(`/api/v1/products?manufacturer_id=${manufacturerId}`)
@@ -86,12 +104,12 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
       .catch(() => setProducts([]));
   }, [manufacturerId]);
 
-  // 제조사 변경 시 라인아이템의 품번 초기화
   const handleManufacturerChange = useCallback((v: string | null) => {
     setValue('manufacturer_id', v ?? '');
     setLines((prev) => prev.map((l) => ({ ...l, product_id: '' })));
   }, [setValue]);
 
+  /* 폼 초기화 */
   useEffect(() => {
     if (open) {
       if (editData) {
@@ -99,7 +117,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
           bl_number: editData.bl_number,
           inbound_type: editData.inbound_type,
           manufacturer_id: editData.manufacturer_id,
-          exchange_rate: editData.exchange_rate ?? '',
+          exchange_rate: editData.exchange_rate != null ? String(editData.exchange_rate) : '',
           etd: editData.etd?.slice(0, 10) ?? '',
           eta: editData.eta?.slice(0, 10) ?? '',
           actual_arrival: editData.actual_arrival?.slice(0, 10) ?? '',
@@ -107,86 +125,106 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
           forwarder: editData.forwarder ?? '',
           warehouse_id: editData.warehouse_id ?? '',
           invoice_number: editData.invoice_number ?? '',
+          incoterms: (editData as any).incoterms ?? '',
+          payment_terms: (editData as any).payment_terms ?? '',
           memo: editData.memo ?? '',
         });
       } else {
         reset({
           bl_number: '', inbound_type: '', manufacturer_id: '',
           exchange_rate: '', etd: '', eta: '', actual_arrival: '',
-          port: '', forwarder: '', warehouse_id: '', invoice_number: '', memo: '',
+          port: '', forwarder: '', warehouse_id: '', invoice_number: '',
+          incoterms: '', payment_terms: '', memo: '',
         });
         setLines([emptyLine()]);
       }
     }
   }, [open, editData, reset]);
 
-  const updateLine = (idx: number, field: keyof LineItem, value: string | number) => {
+  /* 라인아이템 헬퍼 */
+  const updateLine = (idx: number, field: keyof LineItem, value: string) => {
     setLines((prev) => prev.map((l, i) => i === idx ? { ...l, [field]: value } : l));
   };
-
   const addLine = () => setLines((prev) => [...prev, emptyLine()]);
   const removeLine = (idx: number) => setLines((prev) => prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx));
 
   const calcCapacityKw = (line: LineItem): string => {
-    if (!line.product_id || !line.quantity) return '-';
+    const qty = Number(line.quantity);
+    if (!line.product_id || !qty) return '-';
     const product = products.find((p) => p.product_id === line.product_id);
     if (!product) return '-';
-    return ((Number(line.quantity) * product.spec_wp) / 1000).toFixed(2);
+    return ((qty * product.spec_wp) / 1000).toFixed(2);
   };
 
+  const productLabel = (pid: string) => {
+    const p = products.find((x) => x.product_id === pid);
+    return p ? `${p.product_code} | ${p.product_name} | ${p.spec_wp}Wp` : '';
+  };
+
+  /* 제출 */
   const handle = async (data: FormData) => {
+    const exchangeRate = data.exchange_rate ? parseFloat(data.exchange_rate) : undefined;
     const payload: Record<string, unknown> = {
       ...data,
       company_id: selectedCompanyId,
       currency: data.inbound_type === 'import' ? 'USD' : 'KRW',
+      exchange_rate: exchangeRate && !isNaN(exchangeRate) ? exchangeRate : undefined,
       status: editData?.status ?? 'scheduled',
       lines: lines
-        .filter((l) => l.product_id && l.quantity)
+        .filter((l) => l.product_id && Number(l.quantity) > 0)
         .map((l) => {
           const product = products.find((p) => p.product_id === l.product_id);
           const qty = Number(l.quantity);
+          const invAmt = l.invoice_amount_usd ? parseFloat(l.invoice_amount_usd) : undefined;
+          const unitPx = l.unit_price_usd_wp ? parseFloat(l.unit_price_usd_wp) : undefined;
           return {
             product_id: l.product_id,
             quantity: qty,
             capacity_kw: product ? (qty * product.spec_wp) / 1000 : 0,
             item_type: l.item_type,
             payment_type: l.payment_type,
-            invoice_amount_usd: l.invoice_amount_usd === '' ? undefined : Number(l.invoice_amount_usd),
-            unit_price_usd_wp: l.unit_price_usd_wp === '' ? undefined : Number(l.unit_price_usd_wp),
+            invoice_amount_usd: invAmt && !isNaN(invAmt) ? invAmt : undefined,
+            unit_price_usd_wp: unitPx && !isNaN(unitPx) ? unitPx : undefined,
           };
         }),
     };
-    if (data.exchange_rate === '' || data.exchange_rate === undefined) delete payload.exchange_rate;
+    if (!payload.exchange_rate) delete payload.exchange_rate;
     if (!data.etd) delete payload.etd;
     if (!data.eta) delete payload.eta;
     if (!data.actual_arrival) delete payload.actual_arrival;
     if (!data.warehouse_id) delete payload.warehouse_id;
+    if (!data.incoterms) delete payload.incoterms;
+    if (!data.payment_terms) delete payload.payment_terms;
     await onSubmit(payload);
     onOpenChange(false);
   };
 
+  /* ── 렌더 ── */
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editData ? 'B/L 수정' : 'B/L 등록'}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit(handle)} className="space-y-4">
-          {/* 기본 정보 */}
-          <div className="grid grid-cols-3 gap-3">
+        <form onSubmit={handleSubmit(handle)} className="space-y-5">
+
+          {/* ── 1행: B/L번호, 입고유형, 제조사 ── */}
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label>B/L 번호 *</Label>
-              <Input {...register('bl_number')} />
+              <Input {...register('bl_number')} placeholder="예: SOLARBL-2026-001" />
               {errors.bl_number && <p className="text-xs text-destructive">{errors.bl_number.message}</p>}
             </div>
             <div className="space-y-1.5">
               <Label>입고유형 *</Label>
-              <Select value={watch('inbound_type') ?? ''} onValueChange={(v) => setValue('inbound_type', v ?? '')}>
-                <SelectTrigger><SelectValue placeholder="선택" /></SelectTrigger>
+              <Select value={inboundType ?? ''} onValueChange={(v) => setValue('inbound_type', v ?? '')}>
+                <SelectTrigger className="w-full">
+                  <TriggerText text={inboundLabel(inboundType ?? '')} />
+                </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="import">해외직수입</SelectItem>
-                  <SelectItem value="domestic">국내구매</SelectItem>
-                  <SelectItem value="group">그룹내구매</SelectItem>
+                  {INBOUND_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               {errors.inbound_type && <p className="text-xs text-destructive">{errors.inbound_type.message}</p>}
@@ -194,7 +232,9 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
             <div className="space-y-1.5">
               <Label>제조사 *</Label>
               <Select value={manufacturerId ?? ''} onValueChange={handleManufacturerChange}>
-                <SelectTrigger><SelectValue placeholder="선택" /></SelectTrigger>
+                <SelectTrigger className="w-full">
+                  <TriggerText text={manufacturers.find((m) => m.manufacturer_id === manufacturerId)?.name_kr ?? ''} />
+                </SelectTrigger>
                 <SelectContent>
                   {manufacturers.map((m) => (
                     <SelectItem key={m.manufacturer_id} value={m.manufacturer_id}>{m.name_kr}</SelectItem>
@@ -205,30 +245,39 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
             </div>
           </div>
 
-          {isImport && (
-            <>
-              <div className="grid grid-cols-4 gap-3">
-                <div className="space-y-1.5">
-                  <Label>환율 (USD→KRW)</Label>
-                  <Input type="number" step="0.01" {...register('exchange_rate')} />
-                </div>
-                <div className="space-y-1.5"><Label>ETD</Label><Input type="date" {...register('etd')} /></div>
-                <div className="space-y-1.5"><Label>ETA</Label><Input type="date" {...register('eta')} /></div>
-                <div className="space-y-1.5"><Label>실제입항</Label><Input type="date" {...register('actual_arrival')} /></div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1.5"><Label>항구</Label><Input {...register('port')} placeholder="광양항" /></div>
-                <div className="space-y-1.5"><Label>포워더</Label><Input {...register('forwarder')} /></div>
-                <div className="space-y-1.5"><Label>Invoice No.</Label><Input {...register('invoice_number')} /></div>
-              </div>
-            </>
-          )}
+          {/* ── 2행: 날짜 + 환율 (항상 표시) ── */}
+          <div className="grid grid-cols-4 gap-4">
+            <div className="space-y-1.5"><Label>ETD</Label><Input type="date" {...register('etd')} /></div>
+            <div className="space-y-1.5"><Label>ETA</Label><Input type="date" {...register('eta')} /></div>
+            <div className="space-y-1.5"><Label>실제입항</Label><Input type="date" {...register('actual_arrival')} /></div>
+            <div className="space-y-1.5">
+              <Label>환율 (USD→KRW)</Label>
+              <Input {...register('exchange_rate')} inputMode="decimal" placeholder="1450.30" />
+            </div>
+          </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* ── 3행: 항구, 포워더, Invoice, 인코텀즈 ── */}
+          <div className="grid grid-cols-4 gap-4">
+            <div className="space-y-1.5"><Label>항구</Label><Input {...register('port')} placeholder="광양항" /></div>
+            <div className="space-y-1.5"><Label>포워더</Label><Input {...register('forwarder')} /></div>
+            <div className="space-y-1.5"><Label>Invoice No.</Label><Input {...register('invoice_number')} /></div>
+            <div className="space-y-1.5">
+              <Label>선적조건 (인코텀즈)</Label>
+              <Input {...register('incoterms')} list="incoterms-list" placeholder="FOB, CIF 등" />
+              <datalist id="incoterms-list">
+                {INCOTERMS.map((t) => <option key={t} value={t} />)}
+              </datalist>
+            </div>
+          </div>
+
+          {/* ── 4행: 창고, 결제조건, 메모 ── */}
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label>입고 창고</Label>
-              <Select value={watch('warehouse_id') ?? ''} onValueChange={(v) => setValue('warehouse_id', v ?? '')}>
-                <SelectTrigger><SelectValue placeholder="선택" /></SelectTrigger>
+              <Select value={warehouseId ?? ''} onValueChange={(v) => setValue('warehouse_id', v ?? '')}>
+                <SelectTrigger className="w-full">
+                  <TriggerText text={warehouses.find((w) => w.warehouse_id === warehouseId)?.warehouse_name ?? ''} />
+                </SelectTrigger>
                 <SelectContent>
                   {warehouses.map((w) => (
                     <SelectItem key={w.warehouse_id} value={w.warehouse_id}>{w.warehouse_name} ({w.location_name})</SelectItem>
@@ -236,11 +285,15 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1.5">
+              <Label>결제조건</Label>
+              <Input {...register('payment_terms')} placeholder="예: 계약금 5% T/T, L/C 90days" />
+            </div>
             <div className="space-y-1.5"><Label>메모</Label><Textarea {...register('memo')} rows={1} /></div>
           </div>
 
-          {/* 라인아이템 */}
-          <div className="space-y-2">
+          {/* ── 라인아이템 ── */}
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-semibold">라인아이템</Label>
               <Button type="button" variant="outline" size="sm" onClick={addLine} disabled={!manufacturerId}>
@@ -249,88 +302,99 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
             </div>
 
             {!manufacturerId && (
-              <p className="text-xs text-muted-foreground">제조사를 먼저 선택하세요</p>
+              <p className="text-xs text-muted-foreground">제조사를 먼저 선택하면 품번을 추가할 수 있습니다.</p>
             )}
 
-            {manufacturerId && lines.map((line, idx) => (
-              <div key={idx} className="grid grid-cols-[1fr_80px_90px_90px_100px_100px_80px_32px] gap-1.5 items-end">
-                <div className="space-y-1">
-                  {idx === 0 && <Label className="text-xs">품번 *</Label>}
-                  <Select value={line.product_id} onValueChange={(v) => updateLine(idx, 'product_id', v ?? '')}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="품번 선택" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {products.map((p) => (
-                        <SelectItem key={p.product_id} value={p.product_id}>
-                          {p.product_code} ({p.spec_wp}W)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+            {manufacturerId && (
+              <>
+                {/* 헤더 */}
+                <div className="grid grid-cols-[2fr_90px_100px_100px_130px_130px_90px_36px] gap-2 text-xs font-medium text-muted-foreground px-1">
+                  <span>품번 *</span><span>수량EA *</span><span>구분 *</span><span>유무상 *</span>
+                  <span>인보이스USD</span><span>USD/Wp단가</span><span>용량kW</span><span />
                 </div>
-                <div className="space-y-1">
-                  {idx === 0 && <Label className="text-xs">수량EA *</Label>}
-                  <Input
-                    type="number" min={1} className="h-8 text-xs"
-                    value={line.quantity} placeholder="0"
-                    onChange={(e) => updateLine(idx, 'quantity', e.target.value === '' ? '' : Number(e.target.value))}
-                  />
-                </div>
-                <div className="space-y-1">
-                  {idx === 0 && <Label className="text-xs">구분 *</Label>}
-                  <Select value={line.item_type} onValueChange={(v) => updateLine(idx, 'item_type', v ?? 'main')}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="main">본품</SelectItem>
-                      <SelectItem value="spare">스페어</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  {idx === 0 && <Label className="text-xs">유무상 *</Label>}
-                  <Select value={line.payment_type} onValueChange={(v) => updateLine(idx, 'payment_type', v ?? 'paid')}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="paid">유상</SelectItem>
-                      <SelectItem value="free">무상</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  {idx === 0 && <Label className="text-xs">인보이스USD</Label>}
-                  <Input
-                    type="number" step="0.01" className="h-8 text-xs"
-                    value={line.invoice_amount_usd} placeholder="0.00"
-                    onChange={(e) => updateLine(idx, 'invoice_amount_usd', e.target.value === '' ? '' : Number(e.target.value))}
-                  />
-                </div>
-                <div className="space-y-1">
-                  {idx === 0 && <Label className="text-xs">USD/Wp</Label>}
-                  <Input
-                    type="number" step="0.0001" className="h-8 text-xs"
-                    value={line.unit_price_usd_wp} placeholder="0.0000"
-                    onChange={(e) => updateLine(idx, 'unit_price_usd_wp', e.target.value === '' ? '' : Number(e.target.value))}
-                  />
-                </div>
-                <div className="space-y-1">
-                  {idx === 0 && <Label className="text-xs">용량kW</Label>}
-                  <div className="h-8 flex items-center text-xs text-muted-foreground bg-muted rounded px-2">
-                    {calcCapacityKw(line)}
+
+                {lines.map((line, idx) => (
+                  <div key={idx} className="grid grid-cols-[2fr_90px_100px_100px_130px_130px_90px_36px] gap-2 items-center">
+                    {/* 품번 */}
+                    <Select value={line.product_id} onValueChange={(v) => updateLine(idx, 'product_id', v ?? '')}>
+                      <SelectTrigger className="w-full h-9 text-xs">
+                        <TriggerText text={productLabel(line.product_id)} placeholder="품번 선택" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {products.map((p) => (
+                          <SelectItem key={p.product_id} value={p.product_id}>
+                            {p.product_code} | {p.product_name} | {p.spec_wp}Wp
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    {/* 수량 */}
+                    <Input
+                      className="h-9 text-xs" inputMode="numeric"
+                      value={line.quantity} placeholder="0"
+                      onChange={(e) => updateLine(idx, 'quantity', e.target.value.replace(/[^0-9]/g, ''))}
+                    />
+
+                    {/* 구분 */}
+                    <Select value={line.item_type} onValueChange={(v) => updateLine(idx, 'item_type', v ?? 'main')}>
+                      <SelectTrigger className="w-full h-9 text-xs">
+                        <TriggerText text={line.item_type === 'main' ? '본품' : '스페어'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="main">본품</SelectItem>
+                        <SelectItem value="spare">스페어</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {/* 유무상 */}
+                    <Select value={line.payment_type} onValueChange={(v) => updateLine(idx, 'payment_type', v ?? 'paid')}>
+                      <SelectTrigger className="w-full h-9 text-xs">
+                        <TriggerText text={line.payment_type === 'paid' ? '유상' : '무상'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="paid">유상</SelectItem>
+                        <SelectItem value="free">무상</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {/* 인보이스 USD */}
+                    <Input
+                      className="h-9 text-xs" inputMode="decimal"
+                      value={line.invoice_amount_usd} placeholder="0.00"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === '' || /^\d*\.?\d{0,6}$/.test(v)) updateLine(idx, 'invoice_amount_usd', v);
+                      }}
+                    />
+
+                    {/* USD/Wp 단가 */}
+                    <Input
+                      className="h-9 text-xs" inputMode="decimal"
+                      value={line.unit_price_usd_wp} placeholder="0.119500"
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === '' || /^\d*\.?\d{0,6}$/.test(v)) updateLine(idx, 'unit_price_usd_wp', v);
+                      }}
+                    />
+
+                    {/* 용량 kW (자동 계산) */}
+                    <div className="h-9 flex items-center text-xs text-muted-foreground bg-muted rounded-md px-2">
+                      {calcCapacityKw(line)}
+                    </div>
+
+                    {/* 삭제 */}
+                    <Button
+                      type="button" variant="ghost" size="icon"
+                      className="h-9 w-9" onClick={() => removeLine(idx)}
+                      disabled={lines.length <= 1}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
                   </div>
-                </div>
-                <div className="space-y-1">
-                  {idx === 0 && <Label className="text-xs">&nbsp;</Label>}
-                  <Button
-                    type="button" variant="ghost" size="icon"
-                    className="h-8 w-8" onClick={() => removeLine(idx)}
-                    disabled={lines.length <= 1}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+                ))}
+              </>
+            )}
           </div>
 
           <DialogFooter>

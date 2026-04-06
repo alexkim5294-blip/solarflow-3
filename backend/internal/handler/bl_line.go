@@ -29,7 +29,7 @@ func (h *BLLineHandler) ListByBL(w http.ResponseWriter, r *http.Request) {
 	blID := chi.URLParam(r, "blId")
 
 	data, _, err := h.DB.From("bl_line_items").
-		Select("*, products(product_name, spec_wp, module_width_mm, module_height_mm)", "exact", false).
+		Select("*, products(product_code, product_name, spec_wp, module_width_mm, module_height_mm)", "exact", false).
 		Eq("bl_id", blID).
 		Execute()
 	if err != nil {

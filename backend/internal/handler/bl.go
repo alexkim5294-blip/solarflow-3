@@ -98,7 +98,7 @@ func (h *BLHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 	// 비유: 선적 서류에 첨부된 화물 명세 조회
 	lineData, _, err := h.DB.From("bl_line_items").
-		Select("*, products(product_name, spec_wp, module_width_mm, module_height_mm)", "exact", false).
+		Select("*, products(product_code, product_name, spec_wp, module_width_mm, module_height_mm)", "exact", false).
 		Eq("bl_id", id).
 		Execute()
 	if err != nil {

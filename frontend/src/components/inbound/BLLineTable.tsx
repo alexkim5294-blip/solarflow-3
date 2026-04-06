@@ -13,6 +13,11 @@ interface Props {
   onEdit: (line: BLLineItem) => void;
 }
 
+// Go API가 products를 nested로 반환 — flat/nested 모두 대응
+function pCode(l: BLLineItem) { return l.product_code ?? l.products?.product_code ?? '—'; }
+function pName(l: BLLineItem) { return l.product_name ?? l.products?.product_name ?? '—'; }
+function pSpec(l: BLLineItem) { return l.products?.spec_wp; }
+
 export default function BLLineTable({ items, currency, onEdit }: Props) {
   if (items.length === 0) return <EmptyState message="라인아이템이 없습니다" />;
 
@@ -23,6 +28,7 @@ export default function BLLineTable({ items, currency, onEdit }: Props) {
           <TableRow>
             <TableHead>품번</TableHead>
             <TableHead>품명</TableHead>
+            <TableHead>규격</TableHead>
             <TableHead className="text-right">수량</TableHead>
             <TableHead className="text-right">용량(kW)</TableHead>
             <TableHead>구분</TableHead>
@@ -35,8 +41,9 @@ export default function BLLineTable({ items, currency, onEdit }: Props) {
         <TableBody>
           {items.map((line) => (
             <TableRow key={line.bl_line_id}>
-              <TableCell className="font-mono">{line.product_code ?? '—'}</TableCell>
-              <TableCell>{line.product_name ?? '—'}</TableCell>
+              <TableCell className="font-mono">{pCode(line)}</TableCell>
+              <TableCell>{pName(line)}</TableCell>
+              <TableCell>{pSpec(line) != null ? `${pSpec(line)}Wp` : '—'}</TableCell>
               <TableCell className="text-right">{formatNumber(line.quantity)}</TableCell>
               <TableCell className="text-right">{formatKw(line.capacity_kw)}</TableCell>
               <TableCell>{line.item_type === 'main' ? '본품' : '스페어'}</TableCell>
@@ -46,7 +53,7 @@ export default function BLLineTable({ items, currency, onEdit }: Props) {
                   ? (line.unit_price_usd_wp != null ? `$${line.unit_price_usd_wp.toFixed(4)}` : '—')
                   : (line.unit_price_krw_wp != null ? `${formatNumber(line.unit_price_krw_wp)}원` : '—')}
               </TableCell>
-              <TableCell>{USAGE_CATEGORIES[line.usage_category] ?? line.usage_category}</TableCell>
+              <TableCell>{USAGE_CATEGORIES[line.usage_category] ?? line.usage_category ?? '—'}</TableCell>
               <TableCell>
                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onEdit(line)}>
                   <Pencil className="h-3 w-3" />

@@ -40,6 +40,12 @@ export interface BLLineItem {
   unit_price_krw_wp?: number;
   usage_category: string;
   memo?: string;
+  // Go API는 products를 nested 객체로 반환
+  products?: {
+    product_code?: string;
+    product_name?: string;
+    spec_wp?: number;
+  };
 }
 
 export const INBOUND_TYPE_LABEL: Record<InboundType, string> = {

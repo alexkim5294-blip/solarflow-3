@@ -26,6 +26,7 @@ type BLLineWithProduct struct {
 
 // ProductSummaryForBLLine — B/L 라인아이템 조회 시 품번 요약 정보
 type ProductSummaryForBLLine struct {
+	ProductCode    string `json:"product_code"`
 	ProductName    string `json:"product_name"`
 	SpecWP         int    `json:"spec_wp"`
 	ModuleWidthMM  int    `json:"module_width_mm"`

@@ -1,4 +1,6 @@
+import { Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -8,11 +10,12 @@ import type { DeclarationCost } from '@/types/customs';
 interface Props {
   items: DeclarationCost[];
   onEdit: (c: DeclarationCost) => void;
+  onDelete?: (c: DeclarationCost) => void;
   // 미리보기 상태: 파란 배경 / 저장완료 상태: 초록 배경
   landedStatus?: 'preview' | 'saved' | null;
 }
 
-export default function CostTable({ items, onEdit, landedStatus }: Props) {
+export default function CostTable({ items, onEdit, onDelete, landedStatus }: Props) {
   if (items.length === 0) {
     return <p className="text-sm text-muted-foreground text-center py-6">원가 항목이 없습니다</p>;
   }
@@ -45,6 +48,7 @@ export default function CostTable({ items, onEdit, landedStatus }: Props) {
               <TableHead colSpan={5} className="text-center border-b-0 bg-green-50 text-green-700">
                 Stage 3: Landed <Badge variant="outline" className="ml-1 text-[9px] bg-green-100 text-green-700 border-green-300">실무 원가</Badge>
               </TableHead>
+              <TableHead rowSpan={2} className="align-bottom text-right"></TableHead>
             </TableRow>
             <TableRow>
               {/* FOB */}
@@ -97,6 +101,13 @@ export default function CostTable({ items, onEdit, landedStatus }: Props) {
                   <TableCell className="text-right text-xs bg-green-50/30">{c.incidental_cost != null ? formatKRW(c.incidental_cost) : '—'}</TableCell>
                   <TableCell className="text-right text-xs bg-green-50/30">{c.landed_total_krw != null ? formatKRW(c.landed_total_krw) : '—'}</TableCell>
                   <TableCell className="text-right text-xs font-medium bg-green-50/30">{c.landed_wp_krw != null ? formatNumber(c.landed_wp_krw) : '—'}</TableCell>
+                  <TableCell className="text-right">
+                    {onDelete && (
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={(ev) => { ev.stopPropagation(); onDelete(c); }}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </TableCell>
                 </TableRow>
               );
             })}

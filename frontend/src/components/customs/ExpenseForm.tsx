@@ -4,8 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+
+function Txt({ text, placeholder = '선택' }: { text: string; placeholder?: string }) {
+  return <span className={`flex flex-1 text-left truncate ${text ? '' : 'text-muted-foreground'}`} data-slot="select-value">{text || placeholder}</span>;
+}
 import { useAppStore } from '@/stores/appStore';
 import { fetchWithAuth } from '@/lib/api';
 import { EXPENSE_TYPE_LABEL, type ExpenseType, type Expense } from '@/types/customs';
@@ -22,6 +26,7 @@ export default function ExpenseForm({ open, onOpenChange, onSubmit, editData }: 
   const selectedCompanyId = useAppStore((s) => s.selectedCompanyId);
   const [bls, setBls] = useState<BLShipment[]>([]);
   const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   const [blId, setBlId] = useState('');
   const [month, setMonth] = useState('');
@@ -39,6 +44,7 @@ export default function ExpenseForm({ open, onOpenChange, onSubmit, editData }: 
   }, [selectedCompanyId]);
 
   useEffect(() => {
+    if (open) setSubmitError('');
     if (editData) {
       setBlId(editData.bl_id || '');
       setMonth(editData.month || '');
@@ -70,6 +76,7 @@ export default function ExpenseForm({ open, onOpenChange, onSubmit, editData }: 
 
   const handleSubmit = async () => {
     setLoading(true);
+    setSubmitError('');
     try {
       const payload: Record<string, unknown> = {
         company_id: selectedCompanyId,
@@ -84,7 +91,9 @@ export default function ExpenseForm({ open, onOpenChange, onSubmit, editData }: 
       if (memo) payload.memo = memo;
       await onSubmit(payload);
       onOpenChange(false);
-    } catch { /* 상위에서 처리 */ }
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : '저장에 실패했습니다');
+    }
     setLoading(false);
   };
 
@@ -94,6 +103,7 @@ export default function ExpenseForm({ open, onOpenChange, onSubmit, editData }: 
         <DialogHeader>
           <DialogTitle>{editData ? '부대비용 수정' : '부대비용 등록'}</DialogTitle>
         </DialogHeader>
+        {submitError && <div className="rounded-md bg-destructive/10 border border-destructive/30 px-4 py-3 text-sm text-destructive">{submitError}</div>}
         <div className="grid gap-3 py-2">
           <Alert>
             <AlertDescription className="text-xs">B/L 또는 월 중 하나는 필수입니다</AlertDescription>
@@ -102,7 +112,7 @@ export default function ExpenseForm({ open, onOpenChange, onSubmit, editData }: 
             <div>
               <Label>B/L</Label>
               <Select value={blId || 'none'} onValueChange={(v) => setBlId(v === 'none' ? '' : (v ?? ''))}>
-                <SelectTrigger><SelectValue placeholder="B/L 선택" /></SelectTrigger>
+                <SelectTrigger><Txt text={bls.find(b => b.bl_id === blId)?.bl_number ?? ''} placeholder="B/L 선택" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">선택 안 함</SelectItem>
                   {bls.map((bl) => (
@@ -114,7 +124,7 @@ export default function ExpenseForm({ open, onOpenChange, onSubmit, editData }: 
             <div>
               <Label>월 (YYYY-MM)</Label>
               <Select value={month || 'none'} onValueChange={(v) => setMonth(v === 'none' ? '' : (v ?? ''))}>
-                <SelectTrigger><SelectValue placeholder="월 선택" /></SelectTrigger>
+                <SelectTrigger><Txt text={month} placeholder="월 선택" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">선택 안 함</SelectItem>
                   {months.map((m) => (
@@ -127,7 +137,7 @@ export default function ExpenseForm({ open, onOpenChange, onSubmit, editData }: 
           <div>
             <Label>비용유형 *</Label>
             <Select value={expenseType || 'none'} onValueChange={(v) => setExpenseType(v === 'none' ? '' : v as ExpenseType)}>
-              <SelectTrigger><SelectValue placeholder="비용유형 선택" /></SelectTrigger>
+              <SelectTrigger><Txt text={expenseType ? (EXPENSE_TYPE_LABEL[expenseType as ExpenseType] ?? '') : ''} placeholder="비용유형 선택" /></SelectTrigger>
               <SelectContent>
                 {(Object.entries(EXPENSE_TYPE_LABEL) as [ExpenseType, string][]).map(([k, v]) => (
                   <SelectItem key={k} value={k}>{v}</SelectItem>

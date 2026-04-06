@@ -162,3 +162,23 @@ func (h *CostDetailHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	response.RespondJSON(w, http.StatusOK, updated[0])
 }
+
+// Delete — DELETE /api/v1/cost-details/{id} — 원가 명세 삭제
+// 비유: 원가 계산서 한 줄을 파기하는 것
+func (h *CostDetailHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	_, _, err := h.DB.From("cost_details").
+		Delete("", "").
+		Eq("cost_id", id).
+		Execute()
+	if err != nil {
+		log.Printf("[원가 명세 삭제 실패] id=%s, err=%v", id, err)
+		response.RespondError(w, http.StatusInternalServerError, "원가 명세 삭제에 실패했습니다")
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, struct {
+		Status string `json:"status"`
+	}{Status: "deleted"})
+}

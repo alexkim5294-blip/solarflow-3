@@ -4,11 +4,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useAppStore } from '@/stores/appStore';
 import { fetchWithAuth } from '@/lib/api';
 import type { BLShipment } from '@/types/inbound';
 import type { Declaration } from '@/types/customs';
+
+function Txt({ text, placeholder = '선택' }: { text: string; placeholder?: string }) {
+  return <span className={`flex flex-1 text-left truncate ${text ? '' : 'text-muted-foreground'}`} data-slot="select-value">{text || placeholder}</span>;
+}
 
 interface Props {
   open: boolean;
@@ -21,6 +25,7 @@ export default function DeclarationForm({ open, onOpenChange, onSubmit, editData
   const selectedCompanyId = useAppStore((s) => s.selectedCompanyId);
   const [bls, setBls] = useState<BLShipment[]>([]);
   const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   const [declarationNumber, setDeclarationNumber] = useState('');
   const [blId, setBlId] = useState('');
@@ -40,6 +45,7 @@ export default function DeclarationForm({ open, onOpenChange, onSubmit, editData
   }, [selectedCompanyId]);
 
   useEffect(() => {
+    if (open) setSubmitError('');
     if (editData) {
       setDeclarationNumber(editData.declaration_number);
       setBlId(editData.bl_id);
@@ -59,6 +65,7 @@ export default function DeclarationForm({ open, onOpenChange, onSubmit, editData
 
   const handleSubmit = async () => {
     setLoading(true);
+    setSubmitError('');
     try {
       const payload: Record<string, unknown> = {
         declaration_number: declarationNumber,
@@ -74,7 +81,9 @@ export default function DeclarationForm({ open, onOpenChange, onSubmit, editData
       if (memo) payload.memo = memo;
       await onSubmit(payload);
       onOpenChange(false);
-    } catch { /* 상위에서 처리 */ }
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : '저장에 실패했습니다');
+    }
     setLoading(false);
   };
 
@@ -84,6 +93,7 @@ export default function DeclarationForm({ open, onOpenChange, onSubmit, editData
         <DialogHeader>
           <DialogTitle>{editData ? '면장 수정' : '면장 등록'}</DialogTitle>
         </DialogHeader>
+        {submitError && <div className="rounded-md bg-destructive/10 border border-destructive/30 px-4 py-3 text-sm text-destructive">{submitError}</div>}
         <div className="grid gap-3 py-2">
           <div>
             <Label>면장번호 *</Label>
@@ -92,7 +102,7 @@ export default function DeclarationForm({ open, onOpenChange, onSubmit, editData
           <div>
             <Label>B/L *</Label>
             <Select value={blId} onValueChange={(v) => setBlId(v ?? '')}>
-              <SelectTrigger><SelectValue placeholder="B/L 선택" /></SelectTrigger>
+              <SelectTrigger><Txt text={bls.find(b => b.bl_id === blId)?.bl_number ?? ''} placeholder="B/L 선택" /></SelectTrigger>
               <SelectContent>
                 {bls.map((bl) => (
                   <SelectItem key={bl.bl_id} value={bl.bl_id}>{bl.bl_number}</SelectItem>

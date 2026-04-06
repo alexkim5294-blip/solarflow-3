@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import ConfirmDialog from '@/components/common/ConfirmDialog';
 import { useAppStore } from '@/stores/appStore';
 import { useDeclarationList, useExpenseList } from '@/hooks/useCustoms';
 import { fetchWithAuth } from '@/lib/api';
@@ -16,6 +17,10 @@ import ExchangeComparePanel from '@/components/customs/ExchangeComparePanel';
 import { EXPENSE_TYPE_LABEL, type ExpenseType, type Expense } from '@/types/customs';
 import type { BLShipment } from '@/types/inbound';
 import ExcelToolbar from '@/components/excel/ExcelToolbar';
+
+function FT({ text }: { text: string }) {
+  return <span className="flex flex-1 text-left truncate" data-slot="select-value">{text}</span>;
+}
 
 export default function CustomsPage() {
   const selectedCompanyId = useAppStore((s) => s.selectedCompanyId);
@@ -31,6 +36,9 @@ export default function CustomsPage() {
   const [expTypeFilter, setExpTypeFilter] = useState('');
   const [expFormOpen, setExpFormOpen] = useState(false);
   const [editExpense, setEditExpense] = useState<Expense | null>(null);
+  const [deletingExpense, setDeletingExpense] = useState<Expense | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   // 마스터
   const [bls, setBls] = useState<BLShipment[]>([]);
@@ -90,6 +98,20 @@ export default function CustomsPage() {
     reloadExp();
   };
 
+  const handleDeleteExpense = async () => {
+    if (!deletingExpense) return;
+    setDeleteLoading(true);
+    setDeleteError('');
+    try {
+      await fetchWithAuth(`/api/v1/expenses/${deletingExpense.expense_id}`, { method: 'DELETE' });
+      setDeletingExpense(null);
+      reloadExp();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : '삭제에 실패했습니다');
+    }
+    setDeleteLoading(false);
+  };
+
   // 월 목록 (최근 12개월)
   const months: string[] = [];
   const now = new Date();
@@ -114,7 +136,7 @@ export default function CustomsPage() {
           <div className="flex items-center justify-between">
             <div className="flex gap-2">
               <Select value={declBlFilter || 'all'} onValueChange={(v) => setDeclBlFilter(v === 'all' ? '' : (v ?? ''))}>
-                <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="B/L" /></SelectTrigger>
+                <SelectTrigger className="h-8 w-40 text-xs"><FT text={declBlFilter ? (bls.find(b => b.bl_id === declBlFilter)?.bl_number ?? '') : '전체 B/L'} /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">전체 B/L</SelectItem>
                   {bls.map((bl) => (
@@ -145,7 +167,7 @@ export default function CustomsPage() {
           <div className="flex items-center justify-between">
             <div className="flex gap-2">
               <Select value={expBlFilter || 'all'} onValueChange={(v) => setExpBlFilter(v === 'all' ? '' : (v ?? ''))}>
-                <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="B/L" /></SelectTrigger>
+                <SelectTrigger className="h-8 w-40 text-xs"><FT text={expBlFilter ? (bls.find(b => b.bl_id === expBlFilter)?.bl_number ?? '') : '전체 B/L'} /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">전체 B/L</SelectItem>
                   {bls.map((bl) => (
@@ -154,7 +176,7 @@ export default function CustomsPage() {
                 </SelectContent>
               </Select>
               <Select value={expMonthFilter || 'all'} onValueChange={(v) => setExpMonthFilter(v === 'all' ? '' : (v ?? ''))}>
-                <SelectTrigger className="h-8 w-28 text-xs"><SelectValue placeholder="월" /></SelectTrigger>
+                <SelectTrigger className="h-8 w-28 text-xs"><FT text={expMonthFilter || '전체 기간'} /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">전체 기간</SelectItem>
                   {months.map((m) => (
@@ -163,7 +185,7 @@ export default function CustomsPage() {
                 </SelectContent>
               </Select>
               <Select value={expTypeFilter || 'all'} onValueChange={(v) => setExpTypeFilter(v === 'all' ? '' : (v ?? ''))}>
-                <SelectTrigger className="h-8 w-32 text-xs"><SelectValue placeholder="비용유형" /></SelectTrigger>
+                <SelectTrigger className="h-8 w-32 text-xs"><FT text={expTypeFilter ? (EXPENSE_TYPE_LABEL[expTypeFilter as ExpenseType] ?? '') : '전체 유형'} /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">전체 유형</SelectItem>
                   {(Object.entries(EXPENSE_TYPE_LABEL) as [ExpenseType, string][]).map(([k, v]) => (
@@ -185,8 +207,10 @@ export default function CustomsPage() {
               items={expenses}
               onEdit={(e) => { setEditExpense(e); setExpFormOpen(true); }}
               onNew={() => { setEditExpense(null); setExpFormOpen(true); }}
+              onDelete={(e) => { setDeleteError(''); setDeletingExpense(e); }}
             />
           )}
+          {deleteError && <div className="rounded-md bg-destructive/10 border border-destructive/30 px-4 py-3 text-sm text-destructive">{deleteError}</div>}
         </TabsContent>
 
         {/* 탭 3: 환율 비교 */}
@@ -201,6 +225,14 @@ export default function CustomsPage() {
         onOpenChange={setExpFormOpen}
         onSubmit={editExpense ? handleUpdateExp : handleCreateExp}
         editData={editExpense}
+      />
+      <ConfirmDialog
+        open={!!deletingExpense}
+        onOpenChange={(o) => { if (!o) setDeletingExpense(null); }}
+        title="부대비용 삭제"
+        description={deletingExpense ? `${EXPENSE_TYPE_LABEL[deletingExpense.expense_type as ExpenseType] || deletingExpense.expense_type} ${deletingExpense.amount.toLocaleString()}원 부대비용을 삭제합니다.` : ''}
+        onConfirm={handleDeleteExpense}
+        loading={deleteLoading}
       />
     </div>
   );

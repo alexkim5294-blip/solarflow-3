@@ -1,6 +1,8 @@
+import { Pencil, Trash2 } from 'lucide-react';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
 import { formatKRW } from '@/lib/utils';
 import { EXPENSE_TYPE_LABEL, type ExpenseType } from '@/types/customs';
 import type { Expense } from '@/types/customs';
@@ -9,9 +11,10 @@ interface Props {
   items: Expense[];
   onEdit: (e: Expense) => void;
   onNew: () => void;
+  onDelete?: (e: Expense) => void;
 }
 
-export default function ExpenseListTable({ items, onEdit }: Props) {
+export default function ExpenseListTable({ items, onEdit, onDelete }: Props) {
   if (items.length === 0) {
     return <p className="text-sm text-muted-foreground text-center py-8">등록된 부대비용이 없습니다</p>;
   }
@@ -28,15 +31,12 @@ export default function ExpenseListTable({ items, onEdit }: Props) {
           <TableHead className="text-right">합계</TableHead>
           <TableHead>거래처</TableHead>
           <TableHead>메모</TableHead>
+          <TableHead className="text-right">작업</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {items.map((e) => (
-          <TableRow
-            key={e.expense_id}
-            className="cursor-pointer hover:bg-muted/50"
-            onClick={() => onEdit(e)}
-          >
+          <TableRow key={e.expense_id} className="hover:bg-muted/50">
             <TableCell className="text-xs">
               {e.bl_number || e.bl_id?.slice(0, 8) || e.month || '—'}
             </TableCell>
@@ -47,6 +47,18 @@ export default function ExpenseListTable({ items, onEdit }: Props) {
             <TableCell className="text-xs text-right font-medium">{formatKRW(e.total)}</TableCell>
             <TableCell className="text-xs">{e.vendor || '—'}</TableCell>
             <TableCell className="text-xs max-w-[120px] truncate">{e.memo || '—'}</TableCell>
+            <TableCell className="text-right">
+              <div className="flex items-center justify-end gap-1">
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(e)}>
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+                {onDelete && (
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => onDelete(e)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>

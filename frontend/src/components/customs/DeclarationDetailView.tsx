@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ArrowLeft, Pencil, Plus } from 'lucide-react';
+import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import ConfirmDialog from '@/components/common/ConfirmDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { formatDate } from '@/lib/utils';
@@ -35,6 +36,11 @@ export default function DeclarationDetailView({ declarationId, onBack }: Props) 
   const [costFormOpen, setCostFormOpen] = useState(false);
   const [editCost, setEditCost] = useState<DeclarationCost | null>(null);
   const [landedStatus, setLandedStatus] = useState<'preview' | 'saved' | null>(null);
+  const [deleteDeclOpen, setDeleteDeclOpen] = useState(false);
+  const [deleteDeclLoading, setDeleteDeclLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [deletingCost, setDeletingCost] = useState<DeclarationCost | null>(null);
+  const [deleteCostLoading, setDeleteCostLoading] = useState(false);
 
   if (declLoading || !decl) return <LoadingSpinner />;
 
@@ -56,20 +62,53 @@ export default function DeclarationDetailView({ declarationId, onBack }: Props) 
     reloadCosts();
   };
 
+  const handleDeleteDecl = async () => {
+    setDeleteDeclLoading(true);
+    setDeleteError('');
+    try {
+      await fetchWithAuth(`/api/v1/declarations/${declarationId}`, { method: 'DELETE' });
+      setDeleteDeclOpen(false);
+      onBack();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : '삭제에 실패했습니다');
+    }
+    setDeleteDeclLoading(false);
+  };
+
+  const handleDeleteCost = async () => {
+    if (!deletingCost) return;
+    setDeleteCostLoading(true);
+    setDeleteError('');
+    try {
+      await fetchWithAuth(`/api/v1/cost-details/${deletingCost.cost_id}`, { method: 'DELETE' });
+      setDeletingCost(null);
+      reloadCosts();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : '원가 삭제에 실패했습니다');
+    }
+    setDeleteCostLoading(false);
+  };
+
   return (
     <div className="space-y-4">
       {/* 뒤로가기 */}
       <Button variant="ghost" size="sm" onClick={onBack}>
         <ArrowLeft className="mr-1.5 h-4 w-4" />목록으로
       </Button>
+      {deleteError && <div className="rounded-md bg-destructive/10 border border-destructive/30 px-4 py-3 text-sm text-destructive">{deleteError}</div>}
 
       {/* 기본정보 카드 */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between py-3 px-4">
           <CardTitle className="text-sm">면장 기본정보</CardTitle>
-          <Button variant="ghost" size="sm" onClick={() => setEditDeclOpen(true)}>
-            <Pencil className="mr-1 h-3.5 w-3.5" />수정
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={() => setEditDeclOpen(true)}>
+              <Pencil className="mr-1 h-3.5 w-3.5" />수정
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setDeleteDeclOpen(true)} className="text-destructive hover:text-destructive">
+              <Trash2 className="mr-1 h-3.5 w-3.5" />삭제
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="px-4 pb-3">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -102,6 +141,7 @@ export default function DeclarationDetailView({ declarationId, onBack }: Props) 
           <CostTable
             items={costs}
             onEdit={(c) => { setEditCost(c); setCostFormOpen(true); }}
+            onDelete={(c) => { setDeleteError(''); setDeletingCost(c); }}
             landedStatus={landedStatus}
           />
         )}
@@ -136,6 +176,23 @@ export default function DeclarationDetailView({ declarationId, onBack }: Props) 
         onSubmit={editCost ? handleUpdateCost : handleCreateCost}
         declarationId={declarationId}
         editData={editCost}
+      />
+
+      <ConfirmDialog
+        open={deleteDeclOpen}
+        onOpenChange={setDeleteDeclOpen}
+        title="면장 삭제"
+        description={`면장 "${decl.declaration_number}"을(를) 삭제합니다. 연결된 원가 라인아이템도 함께 제거됩니다.`}
+        onConfirm={handleDeleteDecl}
+        loading={deleteDeclLoading}
+      />
+      <ConfirmDialog
+        open={!!deletingCost}
+        onOpenChange={(o) => { if (!o) setDeletingCost(null); }}
+        title="원가 라인 삭제"
+        description={deletingCost ? `${deletingCost.product_name || deletingCost.product_code || '품목'} 원가 항목을 삭제합니다.` : ''}
+        onConfirm={handleDeleteCost}
+        loading={deleteCostLoading}
       />
     </div>
   );

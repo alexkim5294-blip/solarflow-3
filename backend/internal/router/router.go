@@ -129,6 +129,7 @@ func New(db *supa.Client, engineClient ...*engine.EngineClient) http.Handler {
 			r.Post("/", declH.Create)
 			r.Get("/{id}", declH.GetByID)
 			r.Put("/{id}", declH.Update)
+			r.Delete("/{id}", declH.Delete)
 		})
 
 		costH := handler.NewCostDetailHandler(db)
@@ -137,6 +138,7 @@ func New(db *supa.Client, engineClient ...*engine.EngineClient) http.Handler {
 			r.Post("/", costH.Create)
 			r.Get("/{id}", costH.GetByID)
 			r.Put("/{id}", costH.Update)
+			r.Delete("/{id}", costH.Delete)
 		})
 
 		expenseH := handler.NewExpenseHandler(db)
@@ -145,6 +147,7 @@ func New(db *supa.Client, engineClient ...*engine.EngineClient) http.Handler {
 			r.Post("/", expenseH.Create)
 			r.Get("/{id}", expenseH.GetByID)
 			r.Put("/{id}", expenseH.Update)
+			r.Delete("/{id}", expenseH.Delete)
 		})
 
 		orderH := handler.NewOrderHandler(db)

@@ -176,3 +176,23 @@ func (h *ExpenseHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	response.RespondJSON(w, http.StatusOK, updated[0])
 }
+
+// Delete — DELETE /api/v1/expenses/{id} — 부대비용 삭제
+// 비유: 부대비용 전표 한 장을 파기하는 것
+func (h *ExpenseHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	_, _, err := h.DB.From("incidental_expenses").
+		Delete("", "").
+		Eq("expense_id", id).
+		Execute()
+	if err != nil {
+		log.Printf("[부대비용 삭제 실패] id=%s, err=%v", id, err)
+		response.RespondError(w, http.StatusInternalServerError, "부대비용 삭제에 실패했습니다")
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, struct {
+		Status string `json:"status"`
+	}{Status: "deleted"})
+}

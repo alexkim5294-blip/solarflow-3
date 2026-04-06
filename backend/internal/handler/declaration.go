@@ -166,3 +166,28 @@ func (h *DeclarationHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	response.RespondJSON(w, http.StatusOK, updated[0])
 }
+
+// Delete — DELETE /api/v1/declarations/{id} — 면장 삭제
+// 비유: 면장 서류를 파기 — 연결된 원가 라인을 먼저 삭제
+func (h *DeclarationHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	_, _, _ = h.DB.From("cost_details").
+		Delete("", "").
+		Eq("declaration_id", id).
+		Execute()
+
+	_, _, err := h.DB.From("import_declarations").
+		Delete("", "").
+		Eq("declaration_id", id).
+		Execute()
+	if err != nil {
+		log.Printf("[면장 삭제 실패] id=%s, err=%v", id, err)
+		response.RespondError(w, http.StatusInternalServerError, "면장 삭제에 실패했습니다")
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, struct {
+		Status string `json:"status"`
+	}{Status: "deleted"})
+}

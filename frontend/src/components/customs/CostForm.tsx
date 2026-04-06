@@ -4,10 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { fetchWithAuth } from '@/lib/api';
 import type { Product } from '@/types/masters';
 import type { DeclarationCost } from '@/types/customs';
+
+function Txt({ text, placeholder = '선택' }: { text: string; placeholder?: string }) {
+  return <span className={`flex flex-1 text-left truncate ${text ? '' : 'text-muted-foreground'}`} data-slot="select-value">{text || placeholder}</span>;
+}
 
 interface Props {
   open: boolean;
@@ -20,6 +24,7 @@ interface Props {
 export default function CostForm({ open, onOpenChange, onSubmit, declarationId, editData }: Props) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -55,6 +60,7 @@ export default function CostForm({ open, onOpenChange, onSubmit, declarationId, 
   const landedWpKrw = specWp > 0 && qty > 0 ? landedTotalKrw / (qty * specWp) : 0;
 
   useEffect(() => {
+    if (open) setSubmitError('');
     if (editData) {
       setProductId(editData.product_id);
       setQuantity(String(editData.quantity));
@@ -82,6 +88,7 @@ export default function CostForm({ open, onOpenChange, onSubmit, declarationId, 
 
   const handleSubmit = async () => {
     setLoading(true);
+    setSubmitError('');
     try {
       const payload: Record<string, unknown> = {
         declaration_id: declarationId,
@@ -107,7 +114,9 @@ export default function CostForm({ open, onOpenChange, onSubmit, declarationId, 
       if (memo) payload.memo = memo;
       await onSubmit(payload);
       onOpenChange(false);
-    } catch { /* 상위에서 처리 */ }
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : '저장에 실패했습니다');
+    }
     setLoading(false);
   };
 
@@ -117,12 +126,13 @@ export default function CostForm({ open, onOpenChange, onSubmit, declarationId, 
         <DialogHeader>
           <DialogTitle>{editData ? '원가 수정' : '원가 추가'}</DialogTitle>
         </DialogHeader>
+        {submitError && <div className="rounded-md bg-destructive/10 border border-destructive/30 px-4 py-3 text-sm text-destructive">{submitError}</div>}
         <div className="grid gap-3 py-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label>품목 *</Label>
               <Select value={productId} onValueChange={(v) => setProductId(v ?? '')}>
-                <SelectTrigger><SelectValue placeholder="품목 선택" /></SelectTrigger>
+                <SelectTrigger><Txt text={(() => { const p = products.find(p => p.product_id === productId); return p ? `${p.product_name} (${p.spec_wp}Wp)` : ''; })()} placeholder="품목 선택" /></SelectTrigger>
                 <SelectContent>
                   {products.map((p) => (
                     <SelectItem key={p.product_id} value={p.product_id}>{p.product_name} ({p.spec_wp}Wp)</SelectItem>

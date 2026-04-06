@@ -357,7 +357,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[82vw] sm:max-w-[82vw] h-[85vh] max-h-[85vh] overflow-y-auto">
+      <DialogContent className="w-[82vw] sm:max-w-[82vw] h-[85vh] max-h-[85vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle>{editData ? '입고수정' : '입고등록'}</DialogTitle>
         </DialogHeader>
@@ -570,7 +570,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
                           <SelectTrigger className="w-full h-9 text-xs">
                             <Txt text={productLabel(line.product_id)} placeholder="품번 선택" />
                           </SelectTrigger>
-                          <SelectContent className="min-w-[500px]">
+                          <SelectContent className="min-w-[min(500px,calc(100vw-3rem))]">
                             {products.map(p => (
                               <SelectItem key={p.product_id} value={p.product_id}>
                                 {p.product_code} | {p.product_name} | {p.spec_wp}Wp

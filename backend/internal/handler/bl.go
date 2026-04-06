@@ -211,7 +211,8 @@ func (h *BLHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *BLHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	// 라인아이템 먼저 삭제
+	// 라인아이템 먼저 삭제 (FK 제약 때문에 본체보다 선행)
+	// 해당 B/L에 라인아이템이 없어도 에러 아님
 	_, _, err := h.DB.From("bl_line_items").
 		Delete("", "").
 		Eq("bl_id", id).
@@ -223,7 +224,8 @@ func (h *BLHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// B/L 본체 삭제
-	data, _, err := h.DB.From("bl_shipments").
+	// Delete("", "") — returning="" 이므로 삭제된 행을 반환하지 않음
+	_, _, err = h.DB.From("bl_shipments").
 		Delete("", "").
 		Eq("bl_id", id).
 		Execute()
@@ -233,11 +235,7 @@ func (h *BLHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var deleted []model.BLShipment
-	if err := json.Unmarshal(data, &deleted); err != nil || len(deleted) == 0 {
-		response.RespondError(w, http.StatusNotFound, "삭제할 B/L을 찾을 수 없습니다")
-		return
-	}
-
-	response.RespondJSON(w, http.StatusOK, map[string]string{"message": "삭제 완료"})
+	response.RespondJSON(w, http.StatusOK, struct {
+		Status string `json:"status"`
+	}{Status: "deleted"})
 }

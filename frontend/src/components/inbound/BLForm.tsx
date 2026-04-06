@@ -49,10 +49,12 @@ interface LineItem {
   item_type: 'main' | 'spare';
   payment_type: 'paid' | 'free';
   unit_price: string;
+  manualInvoice: boolean;
+  invoiceOverride: string;
 }
 const emptyLine = (): LineItem => ({
   product_id: '', quantity: '', item_type: 'main', payment_type: 'paid',
-  unit_price: '',
+  unit_price: '', manualInvoice: false, invoiceOverride: '',
 });
 
 /* ── 결제조건 구조체 ── */
@@ -251,7 +253,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
   }, [open, editData, reset, globalCompanyId]);
 
   /* ── 라인아이템 ── */
-  const updateLine = (i: number, f: keyof LineItem, v: string) =>
+  const updateLine = (i: number, f: keyof LineItem, v: string | boolean) =>
     setLines(prev => prev.map((l, j) => j === i ? { ...l, [f]: v } : l));
   const addLine = () => setLines(prev => [...prev, emptyLine()]);
   const removeLine = (i: number) => setLines(prev => prev.length <= 1 ? prev : prev.filter((_, j) => j !== i));
@@ -341,11 +343,13 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
           const qty = Number(l.quantity);
           let price = l.unit_price ? parseFloat(l.unit_price) : undefined;
           if (isImport && priceMode === 'cents' && price) price = price / 100;
-          const inv = calcInvoice(l);
+          const inv = l.manualInvoice && l.invoiceOverride
+            ? parseFloat(l.invoiceOverride) : calcInvoice(l);
           return {
             product_id: l.product_id, quantity: qty,
             capacity_kw: prod ? (qty * prod.spec_wp) / 1000 : 0,
             item_type: l.item_type, payment_type: l.payment_type,
+            usage_category: 'sale',
             invoice_amount_usd: isImport && inv ? inv : undefined,
             invoice_amount_krw: !isImport && inv ? inv : undefined,
             unit_price_usd_wp: isImport ? (price && !isNaN(price) ? price : undefined) : undefined,
@@ -623,9 +627,22 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
                             </Button>
                           )}
                         </div>
-                        {/* 인보이스 (자동 계산, 읽기전용) */}
-                        <div className="h-9 flex items-center text-xs text-muted-foreground bg-muted rounded-md px-2 truncate">
-                          {fmtInvoice(line)}
+                        {/* 인보이스 (자동 계산 + 수동 보정 토글) */}
+                        <div className="flex gap-1 items-center">
+                          {line.manualInvoice ? (
+                            <Input className="h-9 text-xs flex-1 min-w-0" inputMode="decimal"
+                              value={line.invoiceOverride} placeholder="직접 입력"
+                              onChange={e => { const v = e.target.value; if (v === '' || /^\d*\.?\d{0,2}$/.test(v)) updateLine(idx, 'invoiceOverride', v); }} />
+                          ) : (
+                            <div className="h-9 flex items-center text-xs text-muted-foreground bg-muted rounded-md px-2 truncate flex-1 min-w-0">
+                              {fmtInvoice(line)}
+                            </div>
+                          )}
+                          <Button type="button" variant="ghost" size="sm"
+                            className="h-9 px-1 text-[9px] shrink-0" title={line.manualInvoice ? '자동으로' : '수동 보정'}
+                            onClick={() => updateLine(idx, 'manualInvoice', !line.manualInvoice)}>
+                            {line.manualInvoice ? '자동' : '수동'}
+                          </Button>
                         </div>
                         {/* 용량 kW (자동 계산) */}
                         <div className="h-9 flex items-center text-xs text-muted-foreground bg-muted rounded-md px-2">

@@ -47,7 +47,20 @@ export default function InboundPage() {
   }
 
   const handleCreate = async (formData: Record<string, unknown>) => {
-    await fetchWithAuth('/api/v1/bls', { method: 'POST', body: JSON.stringify(formData) });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { lines, ...blData } = formData as any;
+    // 1. BL 본체 생성
+    const created = await fetchWithAuth<{ bl_id: string }>('/api/v1/bls', {
+      method: 'POST', body: JSON.stringify(blData),
+    });
+    // 2. 라인아이템 개별 생성 (Go API가 lines를 별도 endpoint로 처리)
+    if (Array.isArray(lines) && lines.length > 0) {
+      for (const line of lines) {
+        await fetchWithAuth(`/api/v1/bls/${created.bl_id}/lines`, {
+          method: 'POST', body: JSON.stringify({ ...line, bl_id: created.bl_id }),
+        });
+      }
+    }
     reload();
   };
 

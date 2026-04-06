@@ -4,3 +4,5 @@ dist/
 .env
 .wrangler/
 *.log
+.DS_Store
+insert_*.sql

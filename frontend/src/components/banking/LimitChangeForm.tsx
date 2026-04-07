@@ -4,10 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useAppStore } from '@/stores/appStore';
 import { fetchWithAuth } from '@/lib/api';
 import type { Bank } from '@/types/masters';
+
+function Txt({ text, placeholder = '선택' }: { text: string; placeholder?: string }) {
+  return <span className={`flex flex-1 text-left truncate ${text ? '' : 'text-muted-foreground'}`} data-slot="select-value">{text || placeholder}</span>;
+}
 
 interface Props {
   open: boolean;
@@ -19,6 +23,7 @@ export default function LimitChangeForm({ open, onOpenChange, onSubmit }: Props)
   const selectedCompanyId = useAppStore((s) => s.selectedCompanyId);
   const [banks, setBanks] = useState<Bank[]>([]);
   const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   const [bankId, setBankId] = useState('');
   const [changeDate, setChangeDate] = useState('');
@@ -36,12 +41,13 @@ export default function LimitChangeForm({ open, onOpenChange, onSubmit }: Props)
   useEffect(() => {
     if (open) {
       setBankId(''); setChangeDate(''); setPreviousLimit('');
-      setNewLimit(''); setReason('');
+      setNewLimit(''); setReason(''); setSubmitError('');
     }
   }, [open]);
 
   const handleSubmit = async () => {
     setLoading(true);
+    setSubmitError('');
     try {
       const payload: Record<string, unknown> = {
         bank_id: bankId,
@@ -52,7 +58,9 @@ export default function LimitChangeForm({ open, onOpenChange, onSubmit }: Props)
       if (reason) payload.reason = reason;
       await onSubmit(payload);
       onOpenChange(false);
-    } catch { /* 상위에서 처리 */ }
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : '저장에 실패했습니다');
+    }
     setLoading(false);
   };
 
@@ -64,11 +72,12 @@ export default function LimitChangeForm({ open, onOpenChange, onSubmit }: Props)
         <DialogHeader>
           <DialogTitle>한도 변경 등록</DialogTitle>
         </DialogHeader>
+        {submitError && <div className="rounded-md bg-destructive/10 border border-destructive/30 px-4 py-3 text-sm text-destructive">{submitError}</div>}
         <div className="grid gap-3 py-2">
           <div>
             <Label>은행 *</Label>
             <Select value={bankId} onValueChange={(v) => setBankId(v ?? '')}>
-              <SelectTrigger><SelectValue placeholder="은행 선택" /></SelectTrigger>
+              <SelectTrigger><Txt text={banks.find(b => b.bank_id === bankId)?.bank_name ?? ''} placeholder="은행 선택" /></SelectTrigger>
               <SelectContent>
                 {banks.map((b) => (
                   <SelectItem key={b.bank_id} value={b.bank_id}>{b.bank_name}</SelectItem>

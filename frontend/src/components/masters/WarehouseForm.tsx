@@ -6,8 +6,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import type { Warehouse } from '@/types/masters';
+
+const WH_TYPE_LABEL: Record<string, string> = { port: '항구', factory: '공장', vendor: '업체' };
+function Txt({ text, placeholder = '선택' }: { text: string; placeholder?: string }) {
+  return <span className={`flex flex-1 text-left truncate ${text ? '' : 'text-muted-foreground'}`} data-slot="select-value">{text || placeholder}</span>;
+}
 
 const schema = z.object({
   warehouse_code: z.string().length(4, '4자리 필수'),
@@ -64,7 +69,7 @@ export default function WarehouseForm({ open, onOpenChange, onSubmit, editData }
           <div className="space-y-1.5">
             <Label>유형 *</Label>
             <Select value={watch('warehouse_type') ?? ''} onValueChange={(v) => setValue('warehouse_type', v ?? '')}>
-              <SelectTrigger><SelectValue placeholder="선택" /></SelectTrigger>
+              <SelectTrigger><Txt text={WH_TYPE_LABEL[watch('warehouse_type') ?? ''] ?? ''} /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="port">항구</SelectItem>
                 <SelectItem value="factory">공장</SelectItem>

@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Plus, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import DataTable, { type Column } from '@/components/common/DataTable';
 import StatusBadge from '@/components/common/StatusBadge';
+import ConfirmDialog from '@/components/common/ConfirmDialog';
 import ProductForm from '@/components/masters/ProductForm';
 import { fetchWithAuth } from '@/lib/api';
 import { formatWp, formatSize } from '@/lib/utils';
@@ -27,6 +29,7 @@ export default function ProductPage() {
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Product | null>(null);
+  const [toggleTarget, setToggleTarget] = useState<Product | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -72,13 +75,28 @@ export default function ProductPage() {
     load();
   };
 
+  const handleToggle = async () => {
+    if (!toggleTarget) return;
+    await fetchWithAuth(`/api/v1/products/${toggleTarget.product_id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_active: !toggleTarget.is_active }),
+    });
+    setToggleTarget(null);
+    load();
+  };
+
   const columns: Column<Product>[] = [
     { key: 'product_code', label: '품번코드', sortable: true },
     { key: 'manufacturer_name', label: '제조사', sortable: true },
     { key: 'product_name', label: '품명', sortable: true },
     { key: 'spec_wp', label: '규격(Wp)', sortable: true, render: (r) => formatWp(r.spec_wp) },
     { key: 'module_width_mm', label: '크기(mm)', sortable: true, render: (r) => formatSize(r.module_width_mm, r.module_height_mm) },
-    { key: 'is_active', label: '활성', render: (r) => <StatusBadge isActive={r.is_active} /> },
+    { key: 'is_active', label: '활성', render: (r) => (
+      <div className="flex items-center gap-2">
+        <Switch checked={r.is_active} onCheckedChange={() => setToggleTarget(r)} />
+        <StatusBadge isActive={r.is_active} />
+      </div>
+    ) },
   ];
 
   return (
@@ -111,6 +129,13 @@ export default function ProductPage() {
         )}
       />
       <ProductForm open={formOpen} onOpenChange={setFormOpen} onSubmit={handleSubmit} editData={editTarget} />
+      <ConfirmDialog
+        open={!!toggleTarget}
+        onOpenChange={() => setToggleTarget(null)}
+        title="상태 변경"
+        description={`${toggleTarget?.product_code} ${toggleTarget?.product_name}을(를) ${toggleTarget?.is_active ? '비활성' : '활성'}으로 변경하시겠습니까?`}
+        onConfirm={handleToggle}
+      />
     </div>
   );
 }

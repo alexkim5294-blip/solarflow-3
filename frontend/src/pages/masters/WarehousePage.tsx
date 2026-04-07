@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Plus, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import DataTable, { type Column } from '@/components/common/DataTable';
 import StatusBadge from '@/components/common/StatusBadge';
+import ConfirmDialog from '@/components/common/ConfirmDialog';
 import WarehouseForm from '@/components/masters/WarehouseForm';
 import { fetchWithAuth } from '@/lib/api';
 import type { Warehouse } from '@/types/masters';
@@ -15,6 +17,7 @@ export default function WarehousePage() {
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Warehouse | null>(null);
+  const [toggleTarget, setToggleTarget] = useState<Warehouse | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -43,13 +46,28 @@ export default function WarehousePage() {
     setEditTarget(null); load();
   };
 
+  const handleToggle = async () => {
+    if (!toggleTarget) return;
+    await fetchWithAuth(`/api/v1/warehouses/${toggleTarget.warehouse_id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_active: !toggleTarget.is_active }),
+    });
+    setToggleTarget(null);
+    load();
+  };
+
   const columns: Column<Warehouse>[] = [
     { key: 'warehouse_code', label: '창고코드', sortable: true },
     { key: 'warehouse_name', label: '창고명', sortable: true },
     { key: 'warehouse_type', label: '유형', render: (r) => typeLabel[r.warehouse_type] ?? r.warehouse_type },
     { key: 'location_code', label: '장소코드' },
     { key: 'location_name', label: '장소명', sortable: true },
-    { key: 'is_active', label: '활성', render: (r) => <StatusBadge isActive={r.is_active} /> },
+    { key: 'is_active', label: '활성', render: (r) => (
+      <div className="flex items-center gap-2">
+        <Switch checked={r.is_active} onCheckedChange={() => setToggleTarget(r)} />
+        <StatusBadge isActive={r.is_active} />
+      </div>
+    ) },
   ];
 
   return (
@@ -61,6 +79,13 @@ export default function WarehousePage() {
       <DataTable columns={columns} data={filtered} loading={loading} searchable searchPlaceholder="창고코드, 창고명, 장소명 검색" onSearch={handleSearch}
         actions={(row) => (<Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditTarget(row); setFormOpen(true); }}><Pencil className="h-3.5 w-3.5" /></Button>)} />
       <WarehouseForm open={formOpen} onOpenChange={setFormOpen} onSubmit={handleSubmit} editData={editTarget} />
+      <ConfirmDialog
+        open={!!toggleTarget}
+        onOpenChange={() => setToggleTarget(null)}
+        title="상태 변경"
+        description={`${toggleTarget?.warehouse_name}을(를) ${toggleTarget?.is_active ? '비활성' : '활성'}으로 변경하시겠습니까?`}
+        onConfirm={handleToggle}
+      />
     </div>
   );
 }

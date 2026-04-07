@@ -6,8 +6,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import type { Manufacturer } from '@/types/masters';
+
+function Txt({ text, placeholder = '선택' }: { text: string; placeholder?: string }) {
+  return <span className={`flex flex-1 text-left truncate ${text ? '' : 'text-muted-foreground'}`} data-slot="select-value">{text || placeholder}</span>;
+}
 
 const schema = z.object({
   name_kr: z.string().min(1, '제조사명(한)은 필수입니다'),
@@ -69,7 +73,7 @@ export default function ManufacturerForm({ open, onOpenChange, onSubmit, editDat
           <div className="space-y-1.5">
             <Label>국내/해외 *</Label>
             <Select value={watch('domestic_foreign') ?? ''} onValueChange={(v) => setValue('domestic_foreign', v ?? '')}>
-              <SelectTrigger><SelectValue placeholder="선택" /></SelectTrigger>
+              <SelectTrigger><Txt text={watch('domestic_foreign') ?? ''} /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="국내">국내</SelectItem>
                 <SelectItem value="해외">해외</SelectItem>

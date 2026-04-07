@@ -6,8 +6,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import type { Partner } from '@/types/masters';
+
+const PARTNER_TYPE_LABEL: Record<string, string> = { supplier: '공급사', customer: '고객사', both: '공급+고객' };
+function Txt({ text, placeholder = '선택' }: { text: string; placeholder?: string }) {
+  return <span className={`flex flex-1 text-left truncate ${text ? '' : 'text-muted-foreground'}`} data-slot="select-value">{text || placeholder}</span>;
+}
 
 const schema = z.object({
   partner_name: z.string().min(1, '거래처명은 필수입니다'),
@@ -61,7 +66,7 @@ export default function PartnerForm({ open, onOpenChange, onSubmit, editData }: 
           <div className="space-y-1.5">
             <Label>유형 *</Label>
             <Select value={watch('partner_type') ?? ''} onValueChange={(v) => setValue('partner_type', v ?? '')}>
-              <SelectTrigger><SelectValue placeholder="선택" /></SelectTrigger>
+              <SelectTrigger><Txt text={PARTNER_TYPE_LABEL[watch('partner_type') ?? ''] ?? ''} /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="supplier">공급사</SelectItem>
                 <SelectItem value="customer">고객사</SelectItem>

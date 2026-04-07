@@ -2,8 +2,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { Plus, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import DataTable, { type Column } from '@/components/common/DataTable';
 import StatusBadge from '@/components/common/StatusBadge';
+import ConfirmDialog from '@/components/common/ConfirmDialog';
 import PartnerForm from '@/components/masters/PartnerForm';
 import { fetchWithAuth } from '@/lib/api';
 import type { Partner } from '@/types/masters';
@@ -17,6 +19,7 @@ export default function PartnerPage() {
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Partner | null>(null);
+  const [toggleTarget, setToggleTarget] = useState<Partner | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -45,13 +48,28 @@ export default function PartnerPage() {
     setEditTarget(null); load();
   };
 
+  const handleToggle = async () => {
+    if (!toggleTarget) return;
+    await fetchWithAuth(`/api/v1/partners/${toggleTarget.partner_id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_active: !toggleTarget.is_active }),
+    });
+    setToggleTarget(null);
+    load();
+  };
+
   const columns: Column<Partner>[] = [
     { key: 'partner_name', label: '거래처명', sortable: true },
     { key: 'partner_type', label: '유형', render: (r) => <Badge variant={typeVariant[r.partner_type] ?? 'secondary'}>{typeLabel[r.partner_type] ?? r.partner_type}</Badge> },
     { key: 'erp_code', label: 'ERP코드' },
     { key: 'contact_name', label: '담당자' },
     { key: 'contact_phone', label: '연락처' },
-    { key: 'is_active', label: '활성', render: (r) => <StatusBadge isActive={r.is_active} /> },
+    { key: 'is_active', label: '활성', render: (r) => (
+      <div className="flex items-center gap-2">
+        <Switch checked={r.is_active} onCheckedChange={() => setToggleTarget(r)} />
+        <StatusBadge isActive={r.is_active} />
+      </div>
+    ) },
   ];
 
   return (
@@ -63,6 +81,13 @@ export default function PartnerPage() {
       <DataTable columns={columns} data={filtered} loading={loading} searchable searchPlaceholder="거래처명, ERP코드, 담당자 검색" onSearch={handleSearch}
         actions={(row) => (<Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditTarget(row); setFormOpen(true); }}><Pencil className="h-3.5 w-3.5" /></Button>)} />
       <PartnerForm open={formOpen} onOpenChange={setFormOpen} onSubmit={handleSubmit} editData={editTarget} />
+      <ConfirmDialog
+        open={!!toggleTarget}
+        onOpenChange={() => setToggleTarget(null)}
+        title="상태 변경"
+        description={`${toggleTarget?.partner_name}을(를) ${toggleTarget?.is_active ? '비활성' : '활성'}으로 변경하시겠습니까?`}
+        onConfirm={handleToggle}
+      />
     </div>
   );
 }

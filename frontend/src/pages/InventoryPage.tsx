@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
+
+function FT({ text }: { text: string }) {
+  return <span className="flex flex-1 text-left truncate" data-slot="select-value">{text}</span>;
+}
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle } from 'lucide-react';
 import { useAppStore } from '@/stores/appStore';
@@ -43,7 +47,7 @@ export default function InventoryPage() {
         <h1 className="text-lg font-semibold">재고 현황</h1>
         <Select value={mfgFilter || 'all'} onValueChange={(v) => setMfgFilter(v === 'all' ? '' : (v ?? ''))}>
           <SelectTrigger className="h-8 w-48 text-xs">
-            <SelectValue placeholder="제조사 필터" />
+            <FT text={mfgFilter ? (manufacturers.find(m => m.manufacturer_id === mfgFilter)?.name_kr ?? '') : '전체 제조사'} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">전체 제조사</SelectItem>

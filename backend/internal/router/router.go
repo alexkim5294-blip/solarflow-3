@@ -39,6 +39,7 @@ func New(db *supa.Client, engineClient ...*engine.EngineClient) http.Handler {
 			r.Post("/", mfgH.Create)
 			r.Get("/{id}", mfgH.GetByID)
 			r.Put("/{id}", mfgH.Update)
+			r.Patch("/{id}/status", mfgH.ToggleStatus)
 		})
 
 		productH := handler.NewProductHandler(db)
@@ -47,6 +48,7 @@ func New(db *supa.Client, engineClient ...*engine.EngineClient) http.Handler {
 			r.Post("/", productH.Create)
 			r.Get("/{id}", productH.GetByID)
 			r.Put("/{id}", productH.Update)
+			r.Patch("/{id}/status", productH.ToggleStatus)
 		})
 
 		partnerH := handler.NewPartnerHandler(db)
@@ -55,6 +57,7 @@ func New(db *supa.Client, engineClient ...*engine.EngineClient) http.Handler {
 			r.Post("/", partnerH.Create)
 			r.Get("/{id}", partnerH.GetByID)
 			r.Put("/{id}", partnerH.Update)
+			r.Patch("/{id}/status", partnerH.ToggleStatus)
 		})
 
 		warehouseH := handler.NewWarehouseHandler(db)
@@ -63,6 +66,7 @@ func New(db *supa.Client, engineClient ...*engine.EngineClient) http.Handler {
 			r.Post("/", warehouseH.Create)
 			r.Get("/{id}", warehouseH.GetByID)
 			r.Put("/{id}", warehouseH.Update)
+			r.Patch("/{id}/status", warehouseH.ToggleStatus)
 		})
 
 		bankH := handler.NewBankHandler(db)
@@ -71,6 +75,7 @@ func New(db *supa.Client, engineClient ...*engine.EngineClient) http.Handler {
 			r.Post("/", bankH.Create)
 			r.Get("/{id}", bankH.GetByID)
 			r.Put("/{id}", bankH.Update)
+			r.Patch("/{id}/status", bankH.ToggleStatus)
 		})
 
 		poH := handler.NewPOHandler(db)

@@ -168,3 +168,25 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	response.RespondJSON(w, http.StatusOK, updated[0])
 }
+
+// ToggleStatus — PATCH /api/v1/products/{id}/status — 품번 활성/비활성
+// 비유: 모듈 카드에 활동중/단종 도장
+func (h *ProductHandler) ToggleStatus(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req model.ToggleStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.RespondError(w, http.StatusBadRequest, "잘못된 요청 형식입니다")
+		return
+	}
+	if msg := req.Validate(); msg != "" {
+		response.RespondError(w, http.StatusBadRequest, msg)
+		return
+	}
+	_, _, err := h.DB.From("products").Update(req, "", "").Eq("product_id", id).Execute()
+	if err != nil {
+		log.Printf("[품번 상태 변경 실패] id=%s, err=%v", id, err)
+		response.RespondError(w, http.StatusInternalServerError, "품번 상태 변경에 실패했습니다")
+		return
+	}
+	response.RespondJSON(w, http.StatusOK, struct{ Status string `json:"status"` }{Status: "ok"})
+}

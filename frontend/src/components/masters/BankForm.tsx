@@ -7,9 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useAppStore } from '@/stores/appStore';
 import type { Bank } from '@/types/masters';
+
+function Txt({ text, placeholder = '선택' }: { text: string; placeholder?: string }) {
+  return <span className={`flex flex-1 text-left truncate ${text ? '' : 'text-muted-foreground'}`} data-slot="select-value">{text || placeholder}</span>;
+}
 
 const schema = z.object({
   company_id: z.string().min(1, '법인은 필수입니다'),
@@ -75,7 +79,7 @@ export default function BankForm({ open, onOpenChange, onSubmit, editData }: Pro
           <div className="space-y-1.5">
             <Label>법인 *</Label>
             <Select value={watch('company_id') ?? ''} onValueChange={(v) => setValue('company_id', v ?? '')}>
-              <SelectTrigger><SelectValue placeholder="선택" /></SelectTrigger>
+              <SelectTrigger><Txt text={companies.find(c => c.company_id === watch('company_id'))?.company_name ?? ''} /></SelectTrigger>
               <SelectContent>
                 {companies.map((c) => (
                   <SelectItem key={c.company_id} value={c.company_id}>{c.company_name}</SelectItem>

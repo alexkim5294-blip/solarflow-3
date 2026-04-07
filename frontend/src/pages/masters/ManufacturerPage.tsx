@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Plus, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import DataTable, { type Column } from '@/components/common/DataTable';
 import StatusBadge from '@/components/common/StatusBadge';
+import ConfirmDialog from '@/components/common/ConfirmDialog';
 import ManufacturerForm from '@/components/masters/ManufacturerForm';
 import { fetchWithAuth } from '@/lib/api';
 import type { Manufacturer } from '@/types/masters';
@@ -13,6 +15,7 @@ export default function ManufacturerPage() {
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Manufacturer | null>(null);
+  const [toggleTarget, setToggleTarget] = useState<Manufacturer | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -35,6 +38,16 @@ export default function ManufacturerPage() {
     ));
   }, [data]);
 
+  const handleToggle = async () => {
+    if (!toggleTarget) return;
+    await fetchWithAuth(`/api/v1/manufacturers/${toggleTarget.manufacturer_id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_active: !toggleTarget.is_active }),
+    });
+    setToggleTarget(null);
+    load();
+  };
+
   const handleSubmit = async (formData: Record<string, unknown>) => {
     if (editTarget) {
       await fetchWithAuth(`/api/v1/manufacturers/${editTarget.manufacturer_id}`, { method: 'PUT', body: JSON.stringify(formData) });
@@ -50,7 +63,12 @@ export default function ManufacturerPage() {
     { key: 'name_en', label: '제조사명(영)', sortable: true },
     { key: 'country', label: '국가', sortable: true },
     { key: 'domestic_foreign', label: '국내/해외', sortable: true },
-    { key: 'is_active', label: '활성', render: (r) => <StatusBadge isActive={r.is_active} /> },
+    { key: 'is_active', label: '활성', render: (r) => (
+      <div className="flex items-center gap-2">
+        <Switch checked={r.is_active} onCheckedChange={() => setToggleTarget(r)} />
+        <StatusBadge isActive={r.is_active} />
+      </div>
+    ) },
   ];
 
   return (
@@ -71,6 +89,13 @@ export default function ManufacturerPage() {
         )}
       />
       <ManufacturerForm open={formOpen} onOpenChange={setFormOpen} onSubmit={handleSubmit} editData={editTarget} />
+      <ConfirmDialog
+        open={!!toggleTarget}
+        onOpenChange={() => setToggleTarget(null)}
+        title="상태 변경"
+        description={`${toggleTarget?.name_kr}을(를) ${toggleTarget?.is_active ? '비활성' : '활성'}으로 변경하시겠습니까?`}
+        onConfirm={handleToggle}
+      />
     </div>
   );
 }

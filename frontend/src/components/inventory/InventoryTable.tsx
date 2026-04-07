@@ -85,11 +85,11 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
         </TableBody>
       </Table>
       <div className="px-3 py-2 text-[10px] text-muted-foreground border-t bg-muted/20">
-        가용재고 구성: <span className="text-foreground">물리적({formatKw(totals.physical)})</span> − 확정사용({formatKw(totals.reserved + totals.allocated)}) = <span className="text-green-600">가용({formatKw(totals.available)})</span>
-        <span className="mx-2">+</span>
-        <span className="text-foreground">미착품({formatKw(totals.incoming)})</span> − 미착예약({formatKw(totals.incomingReserved)}) = 가용미착({formatKw(totals.availableIncoming)})
-        <span className="mx-2">→</span>
-        <span className="text-purple-600">총확보({formatKw(totals.totalSecured)})</span>
+        가용재고 = <span className="text-foreground">물리적({formatKw(totals.physical)})</span> − 예약({formatKw(totals.reserved)}) − 배정({formatKw(totals.allocated)}) = <span className="text-green-600">가용({formatKw(totals.available)})</span>
+        <span className="mx-2">·</span>
+        가용미착 = <span className="text-foreground">미착품({formatKw(totals.incoming)})</span> − 미착예약({formatKw(totals.incomingReserved)}) = 가용미착({formatKw(totals.availableIncoming)})
+        <span className="mx-2">·</span>
+        총확보 = 가용 + 가용미착 = <span className="text-purple-600">{formatKw(totals.totalSecured)}</span>
       </div>
     </div>
   );

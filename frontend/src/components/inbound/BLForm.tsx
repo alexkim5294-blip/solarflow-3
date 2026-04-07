@@ -280,19 +280,17 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
     } catch { setAutoNumber(`${pat}001`); }
   }, [selCompanyId]);
 
-  // 국내구매: 제조사 변경 시
+  // 국내구매: 제조사 변경 시 — 고정 접두사 "DM"
   useEffect(() => {
     if (selType !== 'domestic' || !selMfgId || !selCompanyId || editData) return;
-    const mfg = manufacturers.find(m => m.manufacturer_id === selMfgId);
-    if (mfg) genAutoNumber(mfg.name_kr.slice(0, 2));
-  }, [selType, selMfgId, selCompanyId, manufacturers, genAutoNumber, editData]);
+    genAutoNumber('DM');
+  }, [selType, selMfgId, selCompanyId, genAutoNumber, editData]);
 
-  // 그룹내구매: 법인 변경 시
+  // 그룹내구매: 법인 변경 시 — 고정 접두사 "TS"
   useEffect(() => {
     if (selType !== 'group' || !selCompanyId || editData) return;
-    const co = companies.find(c => c.company_id === selCompanyId);
-    if (co) genAutoNumber(co.company_code);
-  }, [selType, selCompanyId, companies, genAutoNumber, editData]);
+    genAutoNumber('TS');
+  }, [selType, selCompanyId, genAutoNumber, editData]);
 
   /* ── 핸들러 ── */
   const handleTypeChange = useCallback((v: string | null) => {
@@ -811,7 +809,8 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
                                 {(() => {
                                   const usd = calcInvoice(line);
                                   const ex = exchangeRateLive ? parseFloat(exchangeRateLive) : 0;
-                                  if (!usd || !ex) return '-';
+                                  if (!usd) return '-';
+                                  if (!ex || isNaN(ex)) return <span className="text-orange-600">환율을 입력하세요</span>;
                                   return `${Math.round(usd * ex).toLocaleString('ko-KR')}원`;
                                 })()}
                               </div>
@@ -839,7 +838,9 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
                           USD <span className="font-mono font-semibold">${totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </span>
                         <span className="text-sm">
-                          KRW <span className="font-mono font-semibold">{totalKRW ? `₩${totalKRW.toLocaleString('ko-KR')}` : '환율 입력 시'}</span>
+                          KRW <span className={`font-mono font-semibold ${totalKRW ? '' : 'text-orange-600'}`}>
+                            {totalKRW ? `₩${totalKRW.toLocaleString('ko-KR')}` : '환율을 입력하세요'}
+                          </span>
                         </span>
                       </>
                     ) : (
@@ -880,8 +881,9 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
                             = ${(totalForPT * (parseFloat(importPT.depositPercent || '0') / 100)).toLocaleString('en-US', { maximumFractionDigits: 2 })}
                           </span>
                           <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]"
-                            onClick={() => setImportPT(p => ({ ...p, depositSplits: [...p.depositSplits, ''] }))}>
-                            분할 추가
+                            disabled={importPT.depositSplits.length >= 5}
+                            onClick={() => setImportPT(p => p.depositSplits.length >= 5 ? p : ({ ...p, depositSplits: [...p.depositSplits, ''] }))}>
+                            분할 추가 ({importPT.depositSplits.length}/5)
                           </Button>
                         </>
                       )}
@@ -956,12 +958,23 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
                           ? totalForPT * (parseFloat(domesticPT.prepayValue || '0') / 100)
                           : parseInt(domesticPT.prepayValue || '0'))).toLocaleString('ko-KR')}
                       </span>
-                      <select className="h-8 rounded border px-2 text-sm" value={domesticPT.balanceMode}
-                        onChange={e => setDomesticPT(p => ({ ...p, balanceMode: e.target.value as DomesticBalanceMode }))}>
-                        <option value="days5">신용거래(5일단위)</option>
-                        <option value="manual">신용거래(수기)</option>
-                        <option value="month">출고일 기준 월말</option>
-                      </select>
+                      <div className="flex flex-wrap gap-3 basis-full">
+                        <label className="flex items-center gap-1 text-xs">
+                          <input type="radio" checked={domesticPT.balanceMode === 'days5'}
+                            onChange={() => setDomesticPT(p => ({ ...p, balanceMode: 'days5' }))} />
+                          신용거래 (5일 단위)
+                        </label>
+                        <label className="flex items-center gap-1 text-xs">
+                          <input type="radio" checked={domesticPT.balanceMode === 'manual'}
+                            onChange={() => setDomesticPT(p => ({ ...p, balanceMode: 'manual' }))} />
+                          신용거래 (수기 입력)
+                        </label>
+                        <label className="flex items-center gap-1 text-xs">
+                          <input type="radio" checked={domesticPT.balanceMode === 'month'}
+                            onChange={() => setDomesticPT(p => ({ ...p, balanceMode: 'month' }))} />
+                          출고일 기준 월말
+                        </label>
+                      </div>
                       {domesticPT.balanceMode === 'days5' && (
                         <select className="h-8 rounded border px-2 text-sm" value={domesticPT.balanceDays}
                           onChange={e => setDomesticPT(p => ({ ...p, balanceDays: e.target.value }))}>

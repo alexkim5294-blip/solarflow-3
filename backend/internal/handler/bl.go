@@ -23,31 +23,48 @@ func NewBLHandler(db *supa.Client) *BLHandler {
 	return &BLHandler{DB: db}
 }
 
-// List — GET /api/v1/bls — B/L 목록 조회 (법인/제조사/창고 정보 포함)
+// List — GET /api/v1/bls — B/L 목록 조회
 // 비유: 선적 서류 관리실에서 전체 입고 현황을 꺼내 보여주는 것
+// 주의: PostgREST 임베드(companies/manufacturers/warehouses)는 FK가 모호하면
+// (예: bl_shipments에 company_id + counterpart_company_id 동시 존재 → companies 양방향)
+// 단일 객체 대신 배열을 반환할 수 있어 unmarshal 실패의 원인이 됨. 임베드 제거하고 평탄 응답.
+// 화면에서 마스터 이름이 필요하면 별도 API(/companies, /manufacturers)로 클라이언트가 룩업.
 // TODO: eta 범위 필터 추가 (대시보드 "입항 예정" 알림용)
 func (h *BLHandler) List(w http.ResponseWriter, r *http.Request) {
-	query := h.DB.From("bl_shipments").
-		Select("*, companies(company_name, company_code), manufacturers(name_kr), warehouses(warehouse_name, location_name)", "exact", false)
+	query := h.DB.From("bl_shipments").Select("*", "exact", false)
+
+	// 입력 필터 조건을 디버그 로그에 기록
+	poID := r.URL.Query().Get("po_id")
+	compID := r.URL.Query().Get("company_id")
+	mfgID := r.URL.Query().Get("manufacturer_id")
+	status := r.URL.Query().Get("status")
+	inboundType := r.URL.Query().Get("inbound_type")
+	log.Printf("[B/L 목록 조회 요청] po_id=%q company_id=%q manufacturer_id=%q status=%q inbound_type=%q",
+		poID, compID, mfgID, status, inboundType)
 
 	// 비유: ?po_id=xxx — 특정 PO의 B/L만 필터
-	if poID := r.URL.Query().Get("po_id"); poID != "" {
+	if poID != "" {
 		query = query.Eq("po_id", poID)
 	}
 
-	// 비유: ?company_id=xxx — 특정 법인의 B/L만 필터
-	if compID := r.URL.Query().Get("company_id"); compID != "" && compID != "all" {
+	// 비유: ?company_id=xxx — 특정 법인의 B/L만 필터 ("all"이면 전체)
+	if compID != "" && compID != "all" {
 		query = query.Eq("company_id", compID)
 	}
 
 	// 비유: ?manufacturer_id=xxx — 특정 제조사의 B/L만 필터
-	if mfgID := r.URL.Query().Get("manufacturer_id"); mfgID != "" {
+	if mfgID != "" {
 		query = query.Eq("manufacturer_id", mfgID)
 	}
 
 	// 비유: ?status=shipping — 특정 상태의 B/L만 필터
-	if status := r.URL.Query().Get("status"); status != "" {
+	if status != "" {
 		query = query.Eq("status", status)
+	}
+
+	// 비유: ?inbound_type=import — 입고유형 필터
+	if inboundType != "" {
+		query = query.Eq("inbound_type", inboundType)
 	}
 
 	data, _, err := query.Execute()
@@ -57,13 +74,14 @@ func (h *BLHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var shipments []model.BLWithRelations
+	var shipments []model.BLShipment
 	if err := json.Unmarshal(data, &shipments); err != nil {
-		log.Printf("[B/L 목록 디코딩 실패] %v", err)
+		log.Printf("[B/L 목록 디코딩 실패] %v / raw=%s", err, string(data))
 		response.RespondError(w, http.StatusInternalServerError, "응답 데이터 처리에 실패했습니다")
 		return
 	}
 
+	log.Printf("[B/L 목록 조회 결과] %d건 반환", len(shipments))
 	response.RespondJSON(w, http.StatusOK, shipments)
 }
 

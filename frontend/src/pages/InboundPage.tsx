@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Plus, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useAppStore } from '@/stores/appStore';
 import { useBLList } from '@/hooks/useInbound';
 import { fetchWithAuth } from '@/lib/api';
+import type { Manufacturer } from '@/types/masters';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import BLListTable from '@/components/inbound/BLListTable';
 import BLDetailView from '@/components/inbound/BLDetailView';
@@ -24,6 +25,17 @@ export default function InboundPage() {
   const [selectedBL, setSelectedBL] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
+
+  useEffect(() => {
+    fetchWithAuth<Manufacturer[]>('/api/v1/manufacturers')
+      .then(setManufacturers).catch(() => {});
+  }, []);
+
+  const mfgNameMap = useMemo(
+    () => Object.fromEntries(manufacturers.map(m => [m.manufacturer_id, m.name_kr])),
+    [manufacturers]
+  );
 
   useEffect(() => {
     if (!toast) return;
@@ -140,7 +152,12 @@ export default function InboundPage() {
       </div>
 
       {loading ? <LoadingSpinner /> : (
-        <BLListTable items={data} onSelect={(bl) => setSelectedBL(bl.bl_id)} onNew={() => setFormOpen(true)} onDelete={handleDelete} />
+        <BLListTable
+          items={data.map(bl => ({ ...bl, manufacturer_name: bl.manufacturer_name ?? mfgNameMap[bl.manufacturer_id] ?? '—' }))}
+          onSelect={(bl) => setSelectedBL(bl.bl_id)}
+          onNew={() => setFormOpen(true)}
+          onDelete={handleDelete}
+        />
       )}
 
       <BLForm open={formOpen} onOpenChange={setFormOpen} onSubmit={handleCreate} />

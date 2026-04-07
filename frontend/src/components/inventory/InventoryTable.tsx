@@ -2,7 +2,10 @@ import { Badge } from '@/components/ui/badge';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { formatKw, formatWp, formatSize } from '@/lib/utils';
+import { formatKw, formatCapacity, formatWp, formatSize } from '@/lib/utils';
+
+// kW → EA 변환: spec_wp 기반 (spec_wp=0 방어)
+const kwToEa = (kw: number, specWp: number) => specWp ? Math.round((kw * 1000) / specWp) : 0;
 import EmptyState from '@/components/common/EmptyState';
 import type { InventoryItem } from '@/types/inventory';
 
@@ -59,14 +62,14 @@ export default function InventoryTable({ items }: { items: InventoryItem[] }) {
               <TableCell className="whitespace-nowrap">{item.product_name}</TableCell>
               <TableCell className="text-right">{formatWp(item.spec_wp)}</TableCell>
               <TableCell className="text-right whitespace-nowrap">{formatSize(item.module_width_mm, item.module_height_mm)}</TableCell>
-              <TableCell className="text-right font-medium">{formatKw(item.physical_kw)}</TableCell>
-              <TableCell className="text-right">{formatKw(item.reserved_kw)}</TableCell>
-              <TableCell className="text-right">{formatKw(item.allocated_kw)}</TableCell>
-              <TableCell className="text-right font-medium text-green-600">{formatKw(item.available_kw)}</TableCell>
-              <TableCell className="text-right">{formatKw(item.incoming_kw)}</TableCell>
-              <TableCell className="text-right">{formatKw(item.incoming_reserved_kw)}</TableCell>
-              <TableCell className="text-right">{formatKw(item.available_incoming_kw)}</TableCell>
-              <TableCell className="text-right font-medium text-purple-600">{formatKw(item.total_secured_kw)}</TableCell>
+              <TableCell className="text-right font-medium">{formatCapacity(item.physical_kw, kwToEa(item.physical_kw, item.spec_wp))}</TableCell>
+              <TableCell className="text-right">{formatCapacity(item.reserved_kw, kwToEa(item.reserved_kw, item.spec_wp))}</TableCell>
+              <TableCell className="text-right">{formatCapacity(item.allocated_kw, kwToEa(item.allocated_kw, item.spec_wp))}</TableCell>
+              <TableCell className="text-right font-medium text-green-600">{formatCapacity(item.available_kw, kwToEa(item.available_kw, item.spec_wp))}</TableCell>
+              <TableCell className="text-right">{formatCapacity(item.incoming_kw, kwToEa(item.incoming_kw, item.spec_wp))}</TableCell>
+              <TableCell className="text-right">{formatCapacity(item.incoming_reserved_kw, kwToEa(item.incoming_reserved_kw, item.spec_wp))}</TableCell>
+              <TableCell className="text-right">{formatCapacity(item.available_incoming_kw, kwToEa(item.available_incoming_kw, item.spec_wp))}</TableCell>
+              <TableCell className="text-right font-medium text-purple-600">{formatCapacity(item.total_secured_kw, kwToEa(item.total_secured_kw, item.spec_wp))}</TableCell>
               <TableCell><LongTermBadge status={item.long_term_status} /></TableCell>
             </TableRow>
           ))}

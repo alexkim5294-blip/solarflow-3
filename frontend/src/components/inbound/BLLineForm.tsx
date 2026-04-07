@@ -134,7 +134,7 @@ export default function BLLineForm({ open, onOpenChange, onSubmit, editData, blI
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{editData ? '라인아이템 수정' : '라인아이템 추가'}</DialogTitle>
+          <DialogTitle>{editData ? '입고품목 수정' : '입고품목 추가'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(handle)} className="space-y-3">
           <div className="space-y-1.5">

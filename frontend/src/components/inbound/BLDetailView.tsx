@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +15,7 @@ import BLForm from './BLForm';
 import { useBLDetail, useBLLines } from '@/hooks/useInbound';
 import { fetchWithAuth } from '@/lib/api';
 import { INBOUND_TYPE_LABEL, type BLLineItem } from '@/types/inbound';
+import type { Manufacturer } from '@/types/masters';
 
 interface Props {
   blId: string;
@@ -38,6 +39,19 @@ export default function BLDetailView({ blId, onBack }: Props) {
   const [editLine, setEditLine] = useState<BLLineItem | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [manufacturerName, setManufacturerName] = useState<string>('');
+
+  // 평탄 응답에는 공급사명이 포함되지 않으므로 별도 조회
+  useEffect(() => {
+    if (!bl?.manufacturer_id) { setManufacturerName(''); return; }
+    if (bl.manufacturer_name) { setManufacturerName(bl.manufacturer_name); return; }
+    fetchWithAuth<Manufacturer[]>('/api/v1/manufacturers')
+      .then((list) => {
+        const m = list.find((x) => x.manufacturer_id === bl.manufacturer_id);
+        setManufacturerName(m?.name_kr ?? '');
+      })
+      .catch(() => setManufacturerName(''));
+  }, [bl?.manufacturer_id, bl?.manufacturer_name]);
 
   if (blLoading || !bl) return <LoadingSpinner />;
 
@@ -103,7 +117,7 @@ export default function BLDetailView({ blId, onBack }: Props) {
         <CardContent className="pb-4">
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
             <Field label="입고 구분" value={INBOUND_TYPE_LABEL[bl.inbound_type]} />
-            <Field label="공급사" value={bl.manufacturer_name} />
+            <Field label="공급사" value={manufacturerName || bl.manufacturer_name || '—'} />
             <Field label="통화" value={bl.currency === 'USD' ? 'USD (달러)' : 'KRW (원)'} />
             {isImport && <Field label="환율" value={bl.exchange_rate?.toString()} />}
             {isImport && <Field label="ETD" value={formatDate(bl.etd ?? '')} />}
@@ -155,7 +169,7 @@ export default function BLDetailView({ blId, onBack }: Props) {
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title="입고 삭제"
-        description={`"${bl.bl_number}" 입고 건과 연결된 라인아이템이 모두 삭제됩니다. 정말 삭제하시겠습니까?`}
+        description={`"${bl.bl_number}" 입고 건과 연결된 입고품목이 모두 삭제됩니다. 정말 삭제하시겠습니까?`}
         onConfirm={handleDelete}
         loading={deleting}
       />

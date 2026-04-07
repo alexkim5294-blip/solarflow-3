@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { formatKw, formatNumber } from '@/lib/utils';
+import { formatCapacity, formatNumber } from '@/lib/utils';
 import EmptyState from '@/components/common/EmptyState';
 import { USAGE_CATEGORIES, type BLLineItem } from '@/types/inbound';
 
@@ -19,7 +19,7 @@ function pName(l: BLLineItem) { return l.product_name ?? l.products?.product_nam
 function pSpec(l: BLLineItem) { return l.products?.spec_wp; }
 
 export default function BLLineTable({ items, currency, onEdit }: Props) {
-  if (items.length === 0) return <EmptyState message="라인아이템이 없습니다" />;
+  if (items.length === 0) return <EmptyState message="입고품목이 없습니다" />;
 
   return (
     <div className="rounded-md border overflow-x-auto">
@@ -30,7 +30,7 @@ export default function BLLineTable({ items, currency, onEdit }: Props) {
             <TableHead>품명</TableHead>
             <TableHead>규격</TableHead>
             <TableHead className="text-right">수량</TableHead>
-            <TableHead className="text-right">용량(kW)</TableHead>
+            <TableHead className="text-right">용량</TableHead>
             <TableHead>구분</TableHead>
             <TableHead>유/무상</TableHead>
             <TableHead className="text-right">{currency === 'USD' ? '단가(USD/Wp)' : '단가(KRW/Wp)'}</TableHead>
@@ -45,7 +45,7 @@ export default function BLLineTable({ items, currency, onEdit }: Props) {
               <TableCell>{pName(line)}</TableCell>
               <TableCell>{pSpec(line) != null ? `${pSpec(line)}Wp` : '—'}</TableCell>
               <TableCell className="text-right">{formatNumber(line.quantity)}</TableCell>
-              <TableCell className="text-right">{formatKw(line.capacity_kw)}</TableCell>
+              <TableCell className="text-right">{formatCapacity(line.capacity_kw, line.quantity)}</TableCell>
               <TableCell>{line.item_type === 'main' ? '본품' : '스페어'}</TableCell>
               <TableCell>{line.payment_type === 'paid' ? '유상' : '무상'}</TableCell>
               <TableCell className="text-right">

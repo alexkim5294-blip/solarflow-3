@@ -237,9 +237,19 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
   const [submitError, setSubmitError] = useState('');
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { register, reset, setValue, getValues, formState: { isSubmitting } } = useForm<FormData>({
+  const { register, reset, setValue, getValues, watch, formState: { isSubmitting, isDirty } } = useForm<FormData>({
     resolver: zodResolver(schema) as any,
   });
+  // 수정 모드 — 변경사항 감지 (RHF isDirty + 보조 state 변경 감지)
+  watch(); // watch all → 이 컴포넌트가 폼 변화에 리렌더
+  const [initialSnapshot, setInitialSnapshot] = useState<string>('');
+  const currentSnapshot = JSON.stringify({
+    selType, selCompanyId, selMfgId, selWhId, counterpartId,
+    importPT, domesticPT, bafCaf,
+  });
+  const isDirtyAll = editData
+    ? (isDirty || currentSnapshot !== initialSnapshot)
+    : true;
 
   const isImport = selType === 'import';
   const isDomestic = selType === 'domestic';
@@ -332,6 +342,19 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
       setBafCaf(/BAF\s*\/\s*CAF/i.test(d.incoterms ?? ''));
       setDeliveryDate(d.actual_arrival?.slice(0, 10) ?? '');
       setExchangeRateLive(d.exchange_rate != null ? String(d.exchange_rate) : '');
+      // 초기 스냅샷 — 변경사항 비교 기준
+      const initImportPT = d.inbound_type === 'import' ? parseImportPT(d.payment_terms ?? '') : defaultImportPT();
+      const initDomesticPT = d.inbound_type === 'domestic' ? parseDomesticPT(d.payment_terms ?? '') : defaultDomesticPT();
+      setInitialSnapshot(JSON.stringify({
+        selType: d.inbound_type,
+        selCompanyId: d.company_id,
+        selMfgId: d.manufacturer_id,
+        selWhId: d.warehouse_id ?? '',
+        counterpartId: '',
+        importPT: initImportPT,
+        domesticPT: initDomesticPT,
+        bafCaf: /BAF\s*\/\s*CAF/i.test(d.incoterms ?? ''),
+      }));
       if (d.inbound_type === 'import') setImportPT(parseImportPT(d.payment_terms ?? ''));
       else if (d.inbound_type === 'domestic') setDomesticPT(parseDomesticPT(d.payment_terms ?? ''));
       reset({
@@ -760,7 +783,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
                             </span>
                             <div className="flex gap-1 items-center">
                               <Input className="h-9 text-xs flex-1 min-w-0" inputMode={isImport ? 'decimal' : 'numeric'} value={line.unit_price}
-                                placeholder={isImport ? (priceMode === 'cents' ? '12.30' : '0.1230') : '200'}
+                                placeholder={isImport ? (priceMode === 'cents' ? '예: ¢12.30 (=$0.123/Wp)' : '예: $0.1230/Wp') : '예: 200 (원/Wp)'}
                                 onChange={e => {
                                   const v = e.target.value;
                                   if (isImport) {
@@ -893,6 +916,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
                         {importPT.depositSplits.map((amt, i) => (
                           <div key={i} className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground w-16">분할 {i + 1}</span>
+                            <span className="text-xs text-muted-foreground">$</span>
                             <Input className="w-40 h-8 text-sm" inputMode="decimal" value={amt} placeholder="금액"
                               onChange={e => {
                                 const v = e.target.value.replace(/[^0-9.]/g, '');
@@ -1015,9 +1039,14 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
             </>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="items-center">
+            {editData && !isDirtyAll && (
+              <span className="text-xs text-muted-foreground mr-auto">수정사항 없음</span>
+            )}
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>취소</Button>
-            <Button type="submit" disabled={isSubmitting || !selType}>{isSubmitting ? '저장 중...' : '저장'}</Button>
+            <Button type="submit" disabled={isSubmitting || !selType || (!!editData && !isDirtyAll)}>
+              {isSubmitting ? '저장 중...' : '저장'}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

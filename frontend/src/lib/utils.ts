@@ -32,8 +32,24 @@ export function formatWp(n: number): string {
   return `${n}Wp`;
 }
 
+/**
+ * kW 값을 "X.XMW (X,XXXkW)" 형식으로 통일 표시.
+ * 용량 표기 = MW 기본 + kW 부수. EA는 알 수 있는 경우 formatCapacity로 추가.
+ */
 export function formatKw(n: number): string {
-  return `${n.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}kW`;
+  const mw = (n / 1000).toFixed(1);
+  const kw = Math.round(n).toLocaleString('ko-KR');
+  return `${mw}MW (${kw}kW)`;
+}
+
+/**
+ * kW + EA(모듈 장수) 함께 표시: "X.XMW (X,XXXkW / X,XXXEA)"
+ * ea가 주어지지 않으면 formatKw와 동일.
+ */
+export function formatCapacity(kw: number, ea?: number): string {
+  const base = formatKw(kw);
+  if (ea == null || ea === 0) return base;
+  return `${base.slice(0, -1)} / ${Math.round(ea).toLocaleString('ko-KR')}EA)`;
 }
 
 export function formatMW(n: number): string {

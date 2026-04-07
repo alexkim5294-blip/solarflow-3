@@ -57,55 +57,103 @@ const emptyLine = (): LineItem => ({
   unit_price: '', manualInvoice: false, invoiceOverride: '',
 });
 
-/* ── 해외직수입 결제조건 구조체 (T/T % + L/C days) ── */
+/* ── 해외직수입 결제조건 — 계약금 % + 잔금 기간 (30/45/60/90/120/180) ── */
+const IMPORT_BALANCE_DAYS = ['30', '45', '60', '90', '120', '180'] as const;
+type ImportBalanceDay = typeof IMPORT_BALANCE_DAYS[number];
 interface ImportPT {
   hasDeposit: boolean;
   depositMethod: 'tt' | 'lc';
-  depositRate: string;
-  balanceDays: string;
+  depositPercent: string;      // 총구매금액 × %
+  depositSplits: string[];     // 분할 시 각 행 금액
+  balanceDays: ImportBalanceDay;
 }
 const defaultImportPT = (): ImportPT => ({
-  hasDeposit: false, depositMethod: 'tt', depositRate: '', balanceDays: '90',
+  hasDeposit: false, depositMethod: 'tt', depositPercent: '', depositSplits: [], balanceDays: '90',
 });
-function composeImportPT(pt: ImportPT): string {
-  const bal = `L/C ${pt.balanceDays || '90'}days`;
-  if (pt.hasDeposit && pt.depositRate) {
+function composeImportPT(pt: ImportPT, totalAmount: number): string {
+  const bal = `잔금 L/C ${pt.balanceDays}days`;
+  if (pt.hasDeposit && pt.depositPercent) {
     const m = pt.depositMethod === 'tt' ? 'T/T' : 'L/C';
-    return `계약금 ${pt.depositRate}% ${m}, ${bal}`;
+    const pct = pt.depositPercent;
+    const amt = totalAmount ? Math.round(totalAmount * (parseFloat(pct) / 100)) : 0;
+    const splitStr = pt.depositSplits.length
+      ? ` (분할 ${pt.depositSplits.filter(Boolean).length}회)` : '';
+    return `계약금 ${pct}% ${m} ${amt.toLocaleString('en-US')}${splitStr}, ${bal}`;
   }
   return bal;
 }
 function parseImportPT(text: string): ImportPT {
-  const dep = text.match(/계약금\s*(\d+)%?\s*(T\/T|L\/C)/i);
+  const dep = text.match(/계약금\s*([\d.]+)%?\s*(T\/T|L\/C)/i);
   const bal = text.match(/L\/C\s*(\d+)\s*days?/i);
+  const days = (bal?.[1] ?? '90') as string;
   return {
     hasDeposit: !!dep,
     depositMethod: dep?.[2]?.toUpperCase() === 'L/C' ? 'lc' : 'tt',
-    depositRate: dep?.[1] ?? '',
-    balanceDays: bal?.[1] ?? '90',
+    depositPercent: dep?.[1] ?? '',
+    depositSplits: [],
+    balanceDays: (IMPORT_BALANCE_DAYS.includes(days as ImportBalanceDay) ? days : '90') as ImportBalanceDay,
   };
 }
 
-/* ── 국내구매 결제조건 (선입금 + 신용거래 통합) ──
- * 선입금(현금) X원 + 잔금 신용거래 N일. 선입금 0이면 전액 신용거래.
+/* ── 국내구매 결제조건 — 선입금(%/금액) + 잔금 3가지 옵션 ──
+ * 선입금: percent 또는 amount 모드. 0이면 전액 신용거래.
+ * 잔금: days5(5단위 30~120), manual(수기 일수), month(익월말/익익월말/익익익월말)
  */
+const DOMESTIC_DAYS5 = Array.from({ length: 19 }, (_, i) => String(30 + i * 5)); // 30,35,...,120
+type DomesticBalanceMode = 'days5' | 'manual' | 'month';
+type MonthOffset = '1' | '2' | '3';
 interface DomesticPT {
-  prepayAmount: string;       // 원 단위 정수 문자열
-  creditDays: '15' | '20' | '30' | '60' | '90';
+  prepayMode: 'percent' | 'amount';
+  prepayValue: string;          // % 또는 원
+  balanceMode: DomesticBalanceMode;
+  balanceDays: string;          // days5 또는 manual 일수
+  monthOffset: MonthOffset;     // 1/2/3 = 익월말/익익월말/익익익월말
 }
-const defaultDomesticPT = (): DomesticPT => ({ prepayAmount: '', creditDays: '60' });
-function composeDomesticPT(pt: DomesticPT): string {
-  const amt = parseInt(pt.prepayAmount || '0');
-  if (!amt) return `전액 신용거래 ${pt.creditDays}일`;
-  return `선입금 ${amt.toLocaleString('ko-KR')}원 + 잔금 신용거래 ${pt.creditDays}일`;
+const defaultDomesticPT = (): DomesticPT => ({
+  prepayMode: 'amount', prepayValue: '', balanceMode: 'days5', balanceDays: '60', monthOffset: '1',
+});
+function monthLabel(o: MonthOffset): string {
+  return o === '1' ? '익월말' : o === '2' ? '익익월말' : '익익익월말';
+}
+function composeDomesticPT(pt: DomesticPT, totalAmount: number): string {
+  const prepayAmt = pt.prepayMode === 'percent'
+    ? Math.round(totalAmount * (parseFloat(pt.prepayValue || '0') / 100))
+    : parseInt(pt.prepayValue || '0');
+  const prepayStr = prepayAmt > 0
+    ? `선입금 ${prepayAmt.toLocaleString('ko-KR')}원${pt.prepayMode === 'percent' ? ` (${pt.prepayValue}%)` : ''}`
+    : '전액';
+  const balStr = pt.balanceMode === 'days5' || pt.balanceMode === 'manual'
+    ? `잔금 신용거래 ${pt.balanceDays}일`
+    : `잔금 ${monthLabel(pt.monthOffset)}`;
+  return `${prepayStr} + ${balStr}`;
 }
 function parseDomesticPT(text: string): DomesticPT {
-  const amtM = text.match(/선입금\s*([\d,]+)/);
-  const daysM = text.match(/신용거래\s*(15|20|30|60|90)/);
-  return {
-    prepayAmount: amtM?.[1]?.replace(/,/g, '') ?? '',
-    creditDays: (daysM?.[1] as DomesticPT['creditDays']) ?? '60',
-  };
+  const amtM = text.match(/선입금\s*([\d,]+)\s*원/);
+  const pctM = text.match(/\((\d+(?:\.\d+)?)%\)/);
+  const daysM = text.match(/신용거래\s*(\d+)\s*일/);
+  const monthM = text.match(/(익익익월말|익익월말|익월말)/);
+  const base: DomesticPT = defaultDomesticPT();
+  if (amtM) {
+    base.prepayValue = pctM ? pctM[1] : amtM[1].replace(/,/g, '');
+    base.prepayMode = pctM ? 'percent' : 'amount';
+  }
+  if (daysM) {
+    const d = daysM[1];
+    base.balanceMode = DOMESTIC_DAYS5.includes(d) ? 'days5' : 'manual';
+    base.balanceDays = d;
+  } else if (monthM) {
+    base.balanceMode = 'month';
+    base.monthOffset = monthM[1] === '익월말' ? '1' : monthM[1] === '익익월말' ? '2' : '3';
+  }
+  return base;
+}
+function calcMonthEndDue(deliveryDate: string, offset: MonthOffset): string {
+  if (!deliveryDate || !/^\d{4}-\d{2}-\d{2}/.test(deliveryDate)) return '';
+  const d = new Date(deliveryDate);
+  if (isNaN(d.getTime())) return '';
+  // 납품월 + offset → 해당 월의 말일
+  const target = new Date(d.getFullYear(), d.getMonth() + parseInt(offset) + 1, 0);
+  return target.toISOString().slice(0, 10);
 }
 
 /* ── 날짜 입력 정규화: 20260407 → 2026-04-07 ── */
@@ -114,6 +162,20 @@ function normDate8(v: string): string {
   const digits = v.replace(/\D/g, '');
   if (/^\d{8}$/.test(digits)) return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
   return v;
+}
+
+/* ── Enter 키로 다음 입력 필드 포커스 이동 ── */
+function focusNextInput(e: React.KeyboardEvent<HTMLInputElement>) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const form = (e.currentTarget as HTMLInputElement).form;
+  if (!form) return;
+  const focusables = Array.from(
+    form.querySelectorAll<HTMLElement>('input, select, textarea, button'),
+  ).filter((el) => !el.hasAttribute('disabled') && el.tabIndex !== -1);
+  const idx = focusables.indexOf(e.currentTarget);
+  const next = focusables[idx + 1];
+  if (next) next.focus();
 }
 
 /* ── 만기일 계산 (납품일 + N일) ── */
@@ -171,6 +233,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
   const [domesticPT, setDomesticPT] = useState<DomesticPT>(defaultDomesticPT());
   const [bafCaf, setBafCaf] = useState(false);
   const [deliveryDate, setDeliveryDate] = useState(''); // 만기일 계산용 (actual_arrival 미러)
+  const [exchangeRateLive, setExchangeRateLive] = useState(''); // 환율 실시간 미러 (KRW 재계산용)
   const [submitError, setSubmitError] = useState('');
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -270,6 +333,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
       setAutoNumber(d.bl_number);
       setBafCaf(/BAF\s*\/\s*CAF/i.test(d.incoterms ?? ''));
       setDeliveryDate(d.actual_arrival?.slice(0, 10) ?? '');
+      setExchangeRateLive(d.exchange_rate != null ? String(d.exchange_rate) : '');
       if (d.inbound_type === 'import') setImportPT(parseImportPT(d.payment_terms ?? ''));
       else if (d.inbound_type === 'domestic') setDomesticPT(parseDomesticPT(d.payment_terms ?? ''));
       reset({
@@ -287,7 +351,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
       const cid = globalCompanyId && globalCompanyId !== 'all' ? globalCompanyId : '';
       setSelType(''); setSelCompanyId(cid); setSelMfgId(''); setSelWhId('');
       setCounterpartId(''); setAutoNumber(''); setImportPT(defaultImportPT()); setDomesticPT(defaultDomesticPT());
-      setBafCaf(false); setDeliveryDate('');
+      setBafCaf(false); setDeliveryDate(''); setExchangeRateLive('');
       reset({
         inbound_type: '', bl_number: '', manufacturer_id: '',
         exchange_rate: '', etd: '', eta: '', actual_arrival: '',
@@ -373,6 +437,9 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
     const blNumber = isImport ? (data.bl_number ?? '') : autoNumber;
     const exRate = data.exchange_rate ? parseFloat(data.exchange_rate) : undefined;
 
+    // 결제조건 계산용 총 구매금액
+    const totalAmountForPT = validLines.reduce((s, l) => s + (calcInvoice(l) || 0), 0);
+
     const payload: Record<string, unknown> = {
       bl_id: editData?.bl_id,
       bl_number: blNumber,
@@ -383,7 +450,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
       currency: isImport ? 'USD' : 'KRW',
       exchange_rate: isImport && exRate && !isNaN(exRate) ? exRate : undefined,
       status: editData?.status ?? 'scheduled',
-      payment_terms: isImport ? composeImportPT(importPT) : isDomestic ? composeDomesticPT(domesticPT) : undefined,
+      payment_terms: isImport ? composeImportPT(importPT, totalAmountForPT) : isDomestic ? composeDomesticPT(domesticPT, totalAmountForPT) : undefined,
       etd: isImport && data.etd ? data.etd : undefined,
       eta: isImport && data.eta ? data.eta : undefined,
       actual_arrival: data.actual_arrival || undefined,
@@ -426,6 +493,16 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
       setSubmitError(err instanceof Error ? err.message : '저장에 실패했습니다');
     }
   };
+
+  /* ── 총 구매금액 (결제조건 계산용) ── */
+  const totalInvoiceBase = lines.reduce((s, l) => s + (calcInvoice(l) || 0), 0);
+  const exRateNum = exchangeRateLive ? parseFloat(exchangeRateLive) : 0;
+  const totalUSD = isImport ? totalInvoiceBase : 0;
+  const totalKRW = isImport
+    ? (exRateNum ? Math.round(totalInvoiceBase * exRateNum) : 0)
+    : totalInvoiceBase;
+  // 결제조건 % 계산의 기준: import=USD, domestic=KRW
+  const totalForPT = isImport ? totalUSD : totalKRW;
 
   /* ── 렌더 ── */
   const mfgName = manufacturers.find(m => m.manufacturer_id === selMfgId)?.name_kr ?? '';
@@ -539,12 +616,12 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
                   <>
                     <div className="space-y-1.5">
                       <Opt>ETD</Opt>
-                      <Input type="text" placeholder="YYYY-MM-DD 또는 20260407"
+                      <Input type="text" placeholder="YYYY-MM-DD 또는 20260407" onKeyDown={focusNextInput}
                         {...register('etd', { onBlur: (e) => setValue('etd', normDate8(e.target.value)) })} />
                     </div>
                     <div className="space-y-1.5">
                       <Opt>ETA</Opt>
-                      <Input type="text" placeholder="YYYY-MM-DD 또는 20260407"
+                      <Input type="text" placeholder="YYYY-MM-DD 또는 20260407" onKeyDown={focusNextInput}
                         {...register('eta', { onBlur: (e) => setValue('eta', normDate8(e.target.value)) })} />
                     </div>
                   </>
@@ -553,7 +630,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
                   {isImport || isDomestic
                     ? <Req>{isImport ? '실제입항일' : '납품일'}</Req>
                     : <Opt>입고일</Opt>}
-                  <Input type="text" placeholder="YYYY-MM-DD 또는 20260407"
+                  <Input type="text" placeholder="YYYY-MM-DD 또는 20260407" onKeyDown={focusNextInput}
                     {...register('actual_arrival', {
                       onBlur: (e) => {
                         const v = normDate8(e.target.value);
@@ -570,6 +647,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
                         onChange={(e) => {
                           const v = e.target.value.replace(/[^0-9.]/g, '');
                           setValue('exchange_rate', v);
+                          setExchangeRateLive(v); // 입고품목 KRW 실시간 재계산
                         }} />
                     </div>
                     <div className="space-y-1.5">
@@ -599,75 +677,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
                 </div>
               </div>
 
-              {/* 결제조건 — 해외직수입 */}
-              {isImport && (
-                <div className="space-y-2">
-                  <Opt>결제조건</Opt>
-                  <div className="flex flex-wrap items-center gap-3 rounded-md border p-3 text-sm">
-                    <span className="text-muted-foreground">계약금</span>
-                    <label className="flex items-center gap-1">
-                      <input type="radio" checked={importPT.hasDeposit} onChange={() => setImportPT(p => ({ ...p, hasDeposit: true }))} />있음
-                    </label>
-                    <label className="flex items-center gap-1">
-                      <input type="radio" checked={!importPT.hasDeposit} onChange={() => setImportPT(p => ({ ...p, hasDeposit: false }))} />없음
-                    </label>
-                    {importPT.hasDeposit && (
-                      <>
-                        <select className="h-8 rounded border px-2 text-sm" value={importPT.depositMethod}
-                          onChange={e => setImportPT(p => ({ ...p, depositMethod: e.target.value as 'tt' | 'lc' }))}>
-                          <option value="tt">T/T</option><option value="lc">L/C</option>
-                        </select>
-                        <div className="flex items-center gap-1">
-                          <Input className="w-16 h-8 text-sm" inputMode="decimal" value={importPT.depositRate}
-                            onChange={e => setImportPT(p => ({ ...p, depositRate: e.target.value.replace(/[^0-9.]/g, '') }))} />
-                          <span>%</span>
-                        </div>
-                      </>
-                    )}
-                    <span className="text-muted-foreground ml-2">잔금 L/C</span>
-                    <div className="flex items-center gap-1">
-                      <Input className="w-16 h-8 text-sm" inputMode="numeric" value={importPT.balanceDays}
-                        onChange={e => setImportPT(p => ({ ...p, balanceDays: e.target.value.replace(/[^0-9]/g, '') }))} />
-                      <span>days</span>
-                    </div>
-                    <span className="ml-auto text-xs text-muted-foreground">{composeImportPT(importPT)}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* 결제조건 — 국내구매 (선입금 통합 + 만기일) */}
-              {isDomestic && (
-                <div className="space-y-2">
-                  <Opt>결제조건</Opt>
-                  <div className="flex flex-wrap items-center gap-3 rounded-md border p-3 text-sm">
-                    <span className="text-muted-foreground">선입금(현금)</span>
-                    <div className="flex items-center gap-1">
-                      <Input className="w-32 h-8 text-sm" inputMode="numeric"
-                        value={domesticPT.prepayAmount ? parseInt(domesticPT.prepayAmount).toLocaleString('ko-KR') : ''}
-                        placeholder="0 (전액 신용시 비움)"
-                        onChange={e => setDomesticPT(p => ({ ...p, prepayAmount: e.target.value.replace(/[^0-9]/g, '') }))} />
-                      <span>원</span>
-                    </div>
-                    <span className="text-muted-foreground ml-2">잔금 신용거래</span>
-                    <select className="h-8 rounded border px-2 text-sm" value={domesticPT.creditDays}
-                      onChange={e => setDomesticPT(p => ({ ...p, creditDays: e.target.value as DomesticPT['creditDays'] }))}>
-                      <option value="15">15일</option>
-                      <option value="20">20일</option>
-                      <option value="30">30일</option>
-                      <option value="60">60일</option>
-                      <option value="90">90일</option>
-                    </select>
-                    <span className="ml-auto text-xs text-muted-foreground">{composeDomesticPT(domesticPT)}</span>
-                  </div>
-                  {deliveryDate && (
-                    <p className="text-xs text-muted-foreground pl-1">
-                      만기일: <span className="font-medium text-foreground">{calcDueDate(deliveryDate, parseInt(domesticPT.creditDays))}</span>
-                      <span className="ml-1">(납품일 {deliveryDate} + {domesticPT.creditDays}일)</span>
-                    </p>
-                  )}
-                </div>
-              )}
-              {/* 그룹내구매 — 결제조건 숨김 */}
+              {/* 결제조건은 입고품목+총구매금액 아래로 이동 */}
 
               {/* 메모 */}
               <div className="max-w-lg space-y-1.5">
@@ -800,8 +810,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
                               <div className="h-9 flex items-center text-xs text-muted-foreground bg-muted rounded-md px-2 truncate">
                                 {(() => {
                                   const usd = calcInvoice(line);
-                                  const exRaw = getValues('exchange_rate');
-                                  const ex = exRaw ? parseFloat(exRaw) : 0;
+                                  const ex = exchangeRateLive ? parseFloat(exchangeRateLive) : 0;
                                   if (!usd || !ex) return '-';
                                   return `${Math.round(usd * ex).toLocaleString('ko-KR')}원`;
                                 })()}
@@ -819,7 +828,177 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData }: Props
                     ))}
                   </div>
                 )}
+
+                {/* 총 구매금액 */}
+                {selMfgId && lines.some(l => l.product_id && Number(l.quantity) > 0) && (
+                  <div className="rounded-md border-2 border-primary/20 bg-primary/5 px-3 py-2 flex flex-wrap items-center gap-4">
+                    <span className="text-sm font-semibold">총 구매금액</span>
+                    {isImport ? (
+                      <>
+                        <span className="text-sm">
+                          USD <span className="font-mono font-semibold">${totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </span>
+                        <span className="text-sm">
+                          KRW <span className="font-mono font-semibold">{totalKRW ? `₩${totalKRW.toLocaleString('ko-KR')}` : '환율 입력 시'}</span>
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-sm">
+                        KRW <span className="font-mono font-semibold">₩{totalKRW.toLocaleString('ko-KR')}</span>
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
+
+              {/* 결제조건 — 해외직수입 (총구매금액 기준) */}
+              {isImport && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">결제조건</Label>
+                  <div className="rounded-md border p-3 text-sm space-y-2">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-muted-foreground">계약금</span>
+                      <label className="flex items-center gap-1">
+                        <input type="radio" checked={importPT.hasDeposit} onChange={() => setImportPT(p => ({ ...p, hasDeposit: true }))} />있음
+                      </label>
+                      <label className="flex items-center gap-1">
+                        <input type="radio" checked={!importPT.hasDeposit} onChange={() => setImportPT(p => ({ ...p, hasDeposit: false }))} />없음
+                      </label>
+                      {importPT.hasDeposit && (
+                        <>
+                          <select className="h-8 rounded border px-2 text-sm" value={importPT.depositMethod}
+                            onChange={e => setImportPT(p => ({ ...p, depositMethod: e.target.value as 'tt' | 'lc' }))}>
+                            <option value="tt">T/T</option><option value="lc">L/C</option>
+                          </select>
+                          <div className="flex items-center gap-1">
+                            <Input className="w-16 h-8 text-sm" inputMode="decimal" value={importPT.depositPercent}
+                              placeholder="%"
+                              onChange={e => setImportPT(p => ({ ...p, depositPercent: e.target.value.replace(/[^0-9.]/g, '') }))} />
+                            <span>%</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            = ${(totalForPT * (parseFloat(importPT.depositPercent || '0') / 100)).toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                          </span>
+                          <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]"
+                            onClick={() => setImportPT(p => ({ ...p, depositSplits: [...p.depositSplits, ''] }))}>
+                            분할 추가
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                    {importPT.hasDeposit && importPT.depositSplits.length > 0 && (
+                      <div className="pl-4 space-y-1">
+                        {importPT.depositSplits.map((amt, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground w-16">분할 {i + 1}</span>
+                            <Input className="w-40 h-8 text-sm" inputMode="decimal" value={amt} placeholder="금액"
+                              onChange={e => {
+                                const v = e.target.value.replace(/[^0-9.]/g, '');
+                                setImportPT(p => ({ ...p, depositSplits: p.depositSplits.map((x, j) => j === i ? v : x) }));
+                              }} />
+                            <Button type="button" variant="ghost" size="icon" className="h-7 w-7"
+                              onClick={() => setImportPT(p => ({ ...p, depositSplits: p.depositSplits.filter((_, j) => j !== i) }))}>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap items-center gap-3 pt-1 border-t">
+                      <span className="text-muted-foreground">잔금 L/C</span>
+                      <select className="h-8 rounded border px-2 text-sm" value={importPT.balanceDays}
+                        onChange={e => setImportPT(p => ({ ...p, balanceDays: e.target.value as ImportBalanceDay }))}>
+                        {IMPORT_BALANCE_DAYS.map(d => <option key={d} value={d}>{d}일</option>)}
+                      </select>
+                      <span className="text-xs text-muted-foreground">
+                        잔금 = ${Math.max(0, totalForPT - (importPT.hasDeposit ? totalForPT * (parseFloat(importPT.depositPercent || '0') / 100) : 0)).toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                      </span>
+                      <span className="ml-auto text-xs text-muted-foreground">{composeImportPT(importPT, totalForPT)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 결제조건 — 국내구매 */}
+              {isDomestic && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">결제조건</Label>
+                  <div className="rounded-md border p-3 text-sm space-y-2">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-muted-foreground">선입금(현금)</span>
+                      <select className="h-8 rounded border px-2 text-sm" value={domesticPT.prepayMode}
+                        onChange={e => setDomesticPT(p => ({ ...p, prepayMode: e.target.value as 'percent' | 'amount', prepayValue: '' }))}>
+                        <option value="amount">금액</option>
+                        <option value="percent">%</option>
+                      </select>
+                      <div className="flex items-center gap-1">
+                        <Input className="w-32 h-8 text-sm" inputMode={domesticPT.prepayMode === 'percent' ? 'decimal' : 'numeric'}
+                          value={domesticPT.prepayMode === 'amount' && domesticPT.prepayValue
+                            ? parseInt(domesticPT.prepayValue).toLocaleString('ko-KR')
+                            : domesticPT.prepayValue}
+                          placeholder={domesticPT.prepayMode === 'percent' ? '%' : '0 (전액신용시 비움)'}
+                          onChange={e => {
+                            const v = e.target.value.replace(domesticPT.prepayMode === 'percent' ? /[^0-9.]/g : /[^0-9]/g, '');
+                            setDomesticPT(p => ({ ...p, prepayValue: v }));
+                          }} />
+                        <span>{domesticPT.prepayMode === 'percent' ? '%' : '원'}</span>
+                      </div>
+                      {domesticPT.prepayMode === 'percent' && domesticPT.prepayValue && (
+                        <span className="text-xs text-muted-foreground">
+                          = ₩{Math.round(totalForPT * (parseFloat(domesticPT.prepayValue) / 100)).toLocaleString('ko-KR')}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 pt-1 border-t">
+                      <span className="text-muted-foreground">잔금</span>
+                      <span className="text-xs">
+                        ₩{Math.max(0, totalForPT - (domesticPT.prepayMode === 'percent'
+                          ? totalForPT * (parseFloat(domesticPT.prepayValue || '0') / 100)
+                          : parseInt(domesticPT.prepayValue || '0'))).toLocaleString('ko-KR')}
+                      </span>
+                      <select className="h-8 rounded border px-2 text-sm" value={domesticPT.balanceMode}
+                        onChange={e => setDomesticPT(p => ({ ...p, balanceMode: e.target.value as DomesticBalanceMode }))}>
+                        <option value="days5">신용거래(5일단위)</option>
+                        <option value="manual">신용거래(수기)</option>
+                        <option value="month">출고일 기준 월말</option>
+                      </select>
+                      {domesticPT.balanceMode === 'days5' && (
+                        <select className="h-8 rounded border px-2 text-sm" value={domesticPT.balanceDays}
+                          onChange={e => setDomesticPT(p => ({ ...p, balanceDays: e.target.value }))}>
+                          {DOMESTIC_DAYS5.map(d => <option key={d} value={d}>{d}일</option>)}
+                        </select>
+                      )}
+                      {domesticPT.balanceMode === 'manual' && (
+                        <div className="flex items-center gap-1">
+                          <Input className="w-20 h-8 text-sm" inputMode="numeric" value={domesticPT.balanceDays} placeholder="일수"
+                            onChange={e => setDomesticPT(p => ({ ...p, balanceDays: e.target.value.replace(/[^0-9]/g, '') }))} />
+                          <span>일</span>
+                        </div>
+                      )}
+                      {domesticPT.balanceMode === 'month' && (
+                        <select className="h-8 rounded border px-2 text-sm" value={domesticPT.monthOffset}
+                          onChange={e => setDomesticPT(p => ({ ...p, monthOffset: e.target.value as MonthOffset }))}>
+                          <option value="1">익월말</option>
+                          <option value="2">익익월말</option>
+                          <option value="3">익익익월말</option>
+                        </select>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{composeDomesticPT(domesticPT, totalForPT)}</p>
+                    {deliveryDate && (
+                      <p className="text-xs text-muted-foreground">
+                        만기일: <span className="font-medium text-foreground">
+                          {domesticPT.balanceMode === 'month'
+                            ? calcMonthEndDue(deliveryDate, domesticPT.monthOffset)
+                            : calcDueDate(deliveryDate, parseInt(domesticPT.balanceDays || '0'))}
+                        </span>
+                        <span className="ml-1">(납품일 {deliveryDate} 기준)</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+              {/* 그룹내구매 — 결제조건 숨김 */}
             </>
           )}
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 
@@ -22,6 +22,7 @@ export default function InventoryPage() {
   const selectedCompanyId = useAppStore((s) => s.selectedCompanyId);
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [mfgFilter, setMfgFilter] = useState<string>('');
+  const [wpFilter, setWpFilter] = useState<string>('');
 
   useEffect(() => {
     fetchWithAuth<Manufacturer[]>('/api/v1/manufacturers')
@@ -30,8 +31,27 @@ export default function InventoryPage() {
   }, []);
 
   const invOpts = mfgFilter ? { manufacturerId: mfgFilter } : {};
-  const { data: invData, loading: invLoading, error: invError } = useInventory(invOpts);
+  const { data: rawInv, loading: invLoading, error: invError } = useInventory(invOpts);
   const { data: fcData, loading: fcLoading, error: fcError } = useForecast(invOpts);
+
+  // 제조사 선택 시 해당 제조사 재고의 규격(Wp) 목록 추출
+  const availableWps = useMemo(() => {
+    if (!rawInv || !mfgFilter) return [];
+    const set = new Set<number>();
+    rawInv.items.forEach((it) => { if (it.spec_wp) set.add(it.spec_wp); });
+    return [...set].sort((a, b) => a - b);
+  }, [rawInv, mfgFilter]);
+
+  // 제조사 변경 시 규격 필터 초기화
+  useEffect(() => { setWpFilter(''); }, [mfgFilter]);
+
+  // 규격 필터 적용
+  const invData = useMemo(() => {
+    if (!rawInv) return null;
+    if (!wpFilter) return rawInv;
+    const wp = parseFloat(wpFilter);
+    return { ...rawInv, items: rawInv.items.filter((it) => it.spec_wp === wp) };
+  }, [rawInv, wpFilter]);
 
   if (!selectedCompanyId) {
     return (
@@ -45,17 +65,30 @@ export default function InventoryPage() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">재고 현황</h1>
-        <Select value={mfgFilter || 'all'} onValueChange={(v) => setMfgFilter(v === 'all' ? '' : (v ?? ''))}>
-          <SelectTrigger className="h-8 w-48 text-xs">
-            <FT text={mfgFilter ? (manufacturers.find(m => m.manufacturer_id === mfgFilter)?.name_kr ?? '') : '전체 제조사'} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">전체 제조사</SelectItem>
-            {manufacturers.map((m) => (
-              <SelectItem key={m.manufacturer_id} value={m.manufacturer_id}>{m.name_kr}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex gap-2">
+          <Select value={mfgFilter || 'all'} onValueChange={(v) => setMfgFilter(v === 'all' ? '' : (v ?? ''))}>
+            <SelectTrigger className="h-8 w-40 text-xs">
+              <FT text={mfgFilter ? (manufacturers.find(m => m.manufacturer_id === mfgFilter)?.name_kr ?? '') : '제조사'} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">제조사 (전체)</SelectItem>
+              {manufacturers.map((m) => (
+                <SelectItem key={m.manufacturer_id} value={m.manufacturer_id}>{m.name_kr}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={wpFilter || 'all'} onValueChange={(v) => setWpFilter(v === 'all' ? '' : (v ?? ''))}>
+            <SelectTrigger className="h-8 w-32 text-xs" disabled={!mfgFilter}>
+              <FT text={wpFilter ? `${wpFilter}Wp` : '규격'} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">규격 (전체)</SelectItem>
+              {availableWps.map((wp) => (
+                <SelectItem key={wp} value={String(wp)}>{wp}Wp</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <Tabs defaultValue="stock">

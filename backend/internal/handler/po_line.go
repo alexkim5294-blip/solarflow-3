@@ -116,8 +116,8 @@ func (h *POLineHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Eq("po_line_id", id).
 		Execute()
 	if err != nil {
-		log.Printf("[PO 라인아이템 수정 실패] id=%s, err=%v", id, err)
-		response.RespondError(w, http.StatusInternalServerError, "라인아이템 수정에 실패했습니다")
+		log.Printf("[PO 라인아이템 수정 실패] id=%s req=%+v err=%v", id, req, err)
+		response.RespondError(w, http.StatusInternalServerError, "라인아이템 수정 실패: "+err.Error())
 		return
 	}
 
@@ -147,7 +147,7 @@ func (h *POLineHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		Execute()
 	if err != nil {
 		log.Printf("[PO 라인아이템 삭제 실패] id=%s, err=%v", id, err)
-		response.RespondError(w, http.StatusInternalServerError, "라인아이템 삭제에 실패했습니다")
+		response.RespondError(w, http.StatusInternalServerError, "라인아이템 삭제 실패: "+err.Error())
 		return
 	}
 

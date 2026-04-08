@@ -302,18 +302,32 @@ export default function POForm({ open, onOpenChange, onSubmit, editData }: Props
     // 22001 회피: incoterms는 varchar(10) — BAF/CAF 플래그는 메모로 분리
     const incotermsFinal = incoterms;
 
-    const validLines = lines.filter((l) => l.product_id && lineCalc(l).qty > 0);
+    // R1-6: lineCalc가 products 로딩 지연으로 0을 반환해도 raw quantity fallback
+    const validLines = lines.filter((l) => {
+      if (!l.product_id) return false;
+      const c = lineCalc(l);
+      if (c.qty > 0) return true;
+      // fallback: products 미로드 상태에서도 qty 입력값 그대로 사용
+      return parseInt(l.quantity || '0') > 0;
+    });
     const linesPayload = validLines.map((l) => {
       const c = lineCalc(l);
       const p = products.find((x) => x.product_id === l.product_id);
+      const qty = c.qty || parseInt(l.quantity || '0');
       // unit_price_usd = $/EA (모듈 1장 가격), total_amount_usd = 라인 총액
-      const unitPerEA = p && c.qty ? c.total / c.qty : undefined;
+      let total = c.total;
+      if (!total && p && qty) {
+        const rawPrice = parseFloat(l.unit_price_usd_wp || '0');
+        const pricePerWp = l.priceMode === 'cents' ? rawPrice / 100 : rawPrice;
+        total = qty * p.spec_wp * pricePerWp;
+      }
+      const unitPerEA = qty && total ? total / qty : undefined;
       return {
         po_line_id: l.po_line_id, // R1-5: 수정 시 UPDATE 식별자
         product_id: l.product_id,
-        quantity: c.qty,
+        quantity: qty,
         unit_price_usd: unitPerEA && !isNaN(unitPerEA) ? Number(unitPerEA.toFixed(4)) : undefined,
-        total_amount_usd: c.total || undefined,
+        total_amount_usd: total || undefined,
       };
     });
 

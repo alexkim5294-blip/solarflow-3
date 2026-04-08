@@ -1,4 +1,4 @@
-import { forwardRef, useRef, useEffect, useState } from 'react';
+import { forwardRef, useEffect, useState } from 'react';
 import { Calendar } from 'lucide-react';
 import { Input } from './input';
 import { cn } from '@/lib/utils';
@@ -42,35 +42,11 @@ export const DateInput = forwardRef<HTMLInputElement, Props>(function DateInput(
   ref,
 ) {
   const [text, setText] = useState(value ?? '');
-  const hiddenDateRef = useRef<HTMLInputElement>(null);
 
   // value 외부 변경 시 text 동기화
   useEffect(() => { setText(value ?? ''); }, [value]);
 
-  const openPicker = () => {
-    if (disabled) return;
-    const el = hiddenDateRef.current;
-    if (!el) return;
-    // 기존 값 동기화 — 유효 포맷일 때만
-    const normalized = normDate(text);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-      el.value = normalized;
-    }
-    // showPicker가 지원되지 않는 브라우저는 focus+click fallback
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (typeof (el as any).showPicker === 'function') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (el as any).showPicker();
-      } else {
-        el.focus();
-        el.click();
-      }
-    } catch {
-      el.focus();
-      el.click();
-    }
-  };
+  const nativeDateValue = /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
 
   return (
     <div className={cn('relative', className)}>
@@ -89,30 +65,29 @@ export const DateInput = forwardRef<HTMLInputElement, Props>(function DateInput(
           setText(v);
           if (v !== value) onChange(v);
         }}
-        className="pr-9"
+        className="pr-10"
       />
-      <button
-        type="button"
-        onClick={openPicker}
-        disabled={disabled}
-        tabIndex={-1}
-        className="absolute right-1.5 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center rounded hover:bg-accent text-muted-foreground"
-        aria-label="날짜 선택"
-      >
+      {/* 달력 아이콘 (시각적) */}
+      <div className="absolute right-1.5 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center pointer-events-none text-muted-foreground">
         <Calendar className="h-4 w-4" />
-      </button>
-      {/* 달력 트리거용 숨겨진 네이티브 date input */}
+      </div>
+      {/*
+        네이티브 date input을 아이콘 영역 위에 투명하게 겹쳐서
+        클릭 시 브라우저 기본 달력 팝업이 뜨도록 함.
+        texd input의 자유 타이핑은 pr-10 여백 밖에서 그대로 가능.
+      */}
       <input
-        ref={hiddenDateRef}
         type="date"
         tabIndex={-1}
-        aria-hidden="true"
-        className="sr-only"
+        aria-label="달력에서 날짜 선택"
+        disabled={disabled}
+        value={nativeDateValue}
         onChange={(e) => {
           const v = e.target.value;
           setText(v);
           onChange(v);
         }}
+        className="absolute right-0 top-0 h-full w-9 opacity-0 cursor-pointer disabled:cursor-not-allowed"
       />
     </div>
   );

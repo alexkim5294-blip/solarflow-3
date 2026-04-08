@@ -131,7 +131,7 @@ export default function DeclarationDetailView({ declarationId, onBack }: Props) 
       {/* 원가 라인아이템 */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">원가 라인아이템 (3단계)</h3>
+          <h3 className="text-sm font-semibold">원가 항목 (3단계)</h3>
           <Button size="sm" onClick={() => { setEditCost(null); setCostFormOpen(true); }}>
             <Plus className="mr-1 h-3.5 w-3.5" />추가
           </Button>
@@ -182,7 +182,7 @@ export default function DeclarationDetailView({ declarationId, onBack }: Props) 
         open={deleteDeclOpen}
         onOpenChange={setDeleteDeclOpen}
         title="면장 삭제"
-        description={`면장 "${decl.declaration_number}"을(를) 삭제합니다. 연결된 원가 라인아이템도 함께 제거됩니다.`}
+        description={`면장 "${decl.declaration_number}"을(를) 삭제합니다. 연결된 원가 항목도 함께 제거됩니다.`}
         onConfirm={handleDeleteDecl}
         loading={deleteDeclLoading}
       />

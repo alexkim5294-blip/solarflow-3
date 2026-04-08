@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { DateInput } from '@/components/ui/date-input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -157,28 +158,6 @@ function calcMonthEndDue(deliveryDate: string, offset: MonthOffset): string {
   return target.toISOString().slice(0, 10);
 }
 
-/* ── 날짜 입력 정규화: 20260407 → 2026-04-07 ── */
-function normDate8(v: string): string {
-  if (!v) return v;
-  const digits = v.replace(/\D/g, '');
-  if (/^\d{8}$/.test(digits)) return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
-  return v;
-}
-
-/* ── Enter 키로 다음 입력 필드 포커스 이동 ── */
-function focusNextInput(e: React.KeyboardEvent<HTMLInputElement>) {
-  if (e.key !== 'Enter') return;
-  e.preventDefault();
-  const form = (e.currentTarget as HTMLInputElement).form;
-  if (!form) return;
-  const focusables = Array.from(
-    form.querySelectorAll<HTMLElement>('input, select, textarea, button'),
-  ).filter((el) => !el.hasAttribute('disabled') && el.tabIndex !== -1);
-  const idx = focusables.indexOf(e.currentTarget);
-  const next = focusables[idx + 1];
-  if (next) next.focus();
-}
-
 /* ── 만기일 계산 (납품일 + N일) ── */
 function calcDueDate(deliveryDate: string, days: number): string {
   if (!deliveryDate || !/^\d{4}-\d{2}-\d{2}/.test(deliveryDate)) return '';
@@ -213,9 +192,20 @@ interface POSummary {
   manufacturer_name?: string;
   currency?: 'USD' | 'KRW';
   total_capacity_mw?: number;
+  total_mw?: number;
+  contract_date?: string | null;
   status?: string;
   incoterms?: string | null;
   payment_terms?: string | null;
+}
+
+/** R1-9: PO 드롭다운 라벨 포맷 — "PO번호 | 제조사 | X.XMW | YYYY-MM" */
+function formatPOLabel(po: POSummary | undefined, mfgs: Manufacturer[]): string {
+  if (!po) return '';
+  const mfgName = po.manufacturer_name ?? mfgs.find(m => m.manufacturer_id === po.manufacturer_id)?.name_kr ?? '—';
+  const mw = po.total_capacity_mw ?? po.total_mw ?? 0;
+  const month = po.contract_date ? po.contract_date.slice(0, 7) : '';
+  return `${po.po_number} | ${mfgName} | ${mw.toFixed(1)}MW${month ? ` | ${month}` : ''}`;
 }
 interface POLineSummary {
   po_line_id?: string;
@@ -734,17 +724,13 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
                 }
               }}>
                 <SelectTrigger className="w-full">
-                  <Txt text={(() => {
-                    if (!selPOId) return '';
-                    const po = poList.find(p => p.po_id === selPOId);
-                    return po ? `${po.po_number} | ${po.manufacturer_name ?? ''} | ${po.total_capacity_mw?.toFixed(1) ?? '-'}MW | ${po.status ?? ''}` : '';
-                  })()} placeholder="과거/긴급 입고는 미선택" />
+                  <Txt text={formatPOLabel(poList.find(p => p.po_id === selPOId), manufacturers)} placeholder="과거/긴급 입고는 미선택" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">미선택 (수기 입력)</SelectItem>
                   {poList.map(p => (
                     <SelectItem key={p.po_id} value={p.po_id}>
-                      {p.po_number} | {p.manufacturer_name ?? '—'} | {p.total_capacity_mw?.toFixed(1) ?? '-'}MW | {p.status ?? ''}
+                      {formatPOLabel(p, manufacturers)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -844,13 +830,13 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
                   <>
                     <div className="space-y-1.5">
                       <Opt>ETD</Opt>
-                      <Input type="text" placeholder="YYYY-MM-DD 또는 20260407" onKeyDown={focusNextInput}
-                        {...register('etd', { onBlur: (e) => setValue('etd', normDate8(e.target.value)) })} />
+                      <DateInput value={watch('etd') ?? ''}
+                        onChange={(v) => setValue('etd', v, { shouldDirty: true })} />
                     </div>
                     <div className="space-y-1.5">
                       <Opt>ETA</Opt>
-                      <Input type="text" placeholder="YYYY-MM-DD 또는 20260407" onKeyDown={focusNextInput}
-                        {...register('eta', { onBlur: (e) => setValue('eta', normDate8(e.target.value)) })} />
+                      <DateInput value={watch('eta') ?? ''}
+                        onChange={(v) => setValue('eta', v, { shouldDirty: true })} />
                     </div>
                   </>
                 )}
@@ -858,14 +844,11 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
                   {isImport || isDomestic
                     ? <Req>{isImport ? '실제입항일' : '납품일'}</Req>
                     : <Opt>입고일</Opt>}
-                  <Input type="text" placeholder="YYYY-MM-DD 또는 20260407" onKeyDown={focusNextInput}
-                    {...register('actual_arrival', {
-                      onBlur: (e) => {
-                        const v = normDate8(e.target.value);
-                        setValue('actual_arrival', v);
-                        setDeliveryDate(v);
-                      },
-                    })} />
+                  <DateInput value={watch('actual_arrival') ?? ''}
+                    onChange={(v) => {
+                      setValue('actual_arrival', v, { shouldDirty: true });
+                      setDeliveryDate(v);
+                    }} />
                 </div>
                 {isImport && (
                   <>

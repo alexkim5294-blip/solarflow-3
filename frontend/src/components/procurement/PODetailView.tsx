@@ -207,17 +207,18 @@ export default function PODetailView({ po, onBack, onReload }: Props) {
         </Button>
       </div>
 
-      <Tabs defaultValue="info">
+      {/* R1-8: 종합정보 / 입고품목 / LC현황 / 입고현황 — TT이력은 종합정보에 병합 */}
+      <Tabs defaultValue="summary">
         <TabsList>
-          <TabsTrigger value="info">기본정보</TabsTrigger>
-          <TabsTrigger value="lines">라인아이템</TabsTrigger>
+          <TabsTrigger value="summary">종합정보</TabsTrigger>
+          <TabsTrigger value="lines">입고품목</TabsTrigger>
           <TabsTrigger value="lc">LC현황</TabsTrigger>
-          <TabsTrigger value="tt">TT이력</TabsTrigger>
           <TabsTrigger value="inbound">입고현황</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="info">
-          <Card><CardContent className="pt-4 pb-4">
+        <TabsContent value="summary">
+          <Card><CardContent className="pt-4 pb-4 space-y-4">
+            {/* 기본정보 필드 */}
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
               <Field label="계약유형" value={CONTRACT_TYPE_LABEL[po.contract_type]} />
               <Field label="제조사" value={po.manufacturer_name} />
@@ -225,7 +226,61 @@ export default function PODetailView({ po, onBack, onReload }: Props) {
               <Field label="Incoterms" value={po.incoterms} />
               <Field label="결제조건" value={po.payment_terms} />
               {po.total_qty != null && <Field label="총수량" value={formatNumber(po.total_qty).toString()} />}
+              {po.total_mw != null && <Field label="총 MW" value={`${po.total_mw.toFixed(2)}MW`} />}
               {po.memo && <Field label="메모" value={po.memo} />}
+            </div>
+
+            {/* R1-8: T/T 납부현황 + LC 개설현황 요약 */}
+            {(() => {
+              const poTotalUsd = lines.reduce((s, l) => s + (l.total_amount_usd ?? 0), 0);
+              const ttTotalUsd = tts.reduce((s, t) => s + (t.amount_usd ?? 0), 0);
+              const ttRemainUsd = Math.max(0, poTotalUsd - ttTotalUsd);
+              const ttPct = poTotalUsd > 0 ? (ttTotalUsd / poTotalUsd) * 100 : 0;
+              const lcTotalUsd = lcs.reduce((s, l) => s + (l.amount_usd ?? 0), 0);
+              const lcRemainUsd = Math.max(0, poTotalUsd - lcTotalUsd);
+              const lcPct = poTotalUsd > 0 ? (lcTotalUsd / poTotalUsd) * 100 : 0;
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="rounded-md border p-3 space-y-1.5">
+                    <div className="text-xs font-semibold">T/T 납부현황</div>
+                    <div className="text-xs flex justify-between">
+                      <span className="text-muted-foreground">기납부</span>
+                      <span className="font-mono">{formatUSD(ttTotalUsd)}</span>
+                    </div>
+                    <div className="text-xs flex justify-between">
+                      <span className="text-muted-foreground">잔여</span>
+                      <span className="font-mono">{formatUSD(ttRemainUsd)}</span>
+                    </div>
+                    <div className="h-2 rounded bg-muted overflow-hidden">
+                      <div className="h-full bg-primary" style={{ width: `${Math.min(100, ttPct)}%` }} />
+                    </div>
+                    <div className="text-[10px] text-muted-foreground text-right">{ttPct.toFixed(1)}%</div>
+                  </div>
+                  <div className="rounded-md border p-3 space-y-1.5">
+                    <div className="text-xs font-semibold">LC 개설현황</div>
+                    <div className="text-xs flex justify-between">
+                      <span className="text-muted-foreground">기개설</span>
+                      <span className="font-mono">{formatUSD(lcTotalUsd)}</span>
+                    </div>
+                    <div className="text-xs flex justify-between">
+                      <span className="text-muted-foreground">미개설 잔액</span>
+                      <span className="font-mono">{formatUSD(lcRemainUsd)}</span>
+                    </div>
+                    <div className="h-2 rounded bg-muted overflow-hidden">
+                      <div className="h-full bg-green-600" style={{ width: `${Math.min(100, lcPct)}%` }} />
+                    </div>
+                    <div className="text-[10px] text-muted-foreground text-right">{lcPct.toFixed(1)}%</div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* T/T 이력 테이블 (종합정보에 병합) */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-semibold">T/T 이력</h4>
+              </div>
+              {ttsLoading ? <LoadingSpinner /> : <TTSubTable items={tts} poLines={lines} />}
             </div>
           </CardContent></Card>
         </TabsContent>
@@ -240,7 +295,6 @@ export default function PODetailView({ po, onBack, onReload }: Props) {
         </TabsContent>
 
         <TabsContent value="lc">{lcsLoading ? <LoadingSpinner /> : <LCSubTable items={lcs} />}</TabsContent>
-        <TabsContent value="tt">{ttsLoading ? <LoadingSpinner /> : <TTSubTable items={tts} poLines={lines} />}</TabsContent>
         <TabsContent value="inbound"><POInboundProgress poId={po.po_id} poLines={lines} /></TabsContent>
       </Tabs>
 

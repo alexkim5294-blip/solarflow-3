@@ -22,21 +22,21 @@ interface MenuItem {
   children?: { label: string; path: string }[];
 }
 
-// 업무 흐름 (D-084) — 발주→입고→면장→수주→출고 순
+// v4 업무 흐름: 발주→LC→입고→재고→출고/판매→수주/수금
 const workflowItems: MenuItem[] = [
-  { icon: ClipboardList, label: '발주/결제', path: '/procurement', roles: ['admin', 'manager', 'staff'] },
+  { icon: ClipboardList, label: '발주 관리', path: '/procurement', roles: ['admin', 'manager', 'staff'] },
   { icon: Landmark, label: 'LC 관리', path: '/lc', roles: ['admin', 'manager', 'staff'] },
   { icon: PackageCheck, label: '입고 관리', path: '/inbound', roles: ['admin', 'manager', 'staff'] },
-  { icon: Calculator, label: '면장/원가', path: '/customs', roles: ['admin', 'manager', 'staff'] },
-  { icon: HandCoins, label: '수주/수금', path: '/orders', roles: ['admin', 'manager', 'staff'] },
+  { icon: Package, label: '재고 현황', path: '/inventory' },
   { icon: Truck, label: '출고/판매', path: '/outbound', roles: ['admin', 'manager', 'staff'] },
+  { icon: HandCoins, label: '수주/수금', path: '/orders', roles: ['admin', 'manager', 'staff'] },
 ];
 
-// 현황/분석
+// v4 현황/분석: 대시보드→LC한도/만기→매출/이익분석
 const analysisItems: MenuItem[] = [
-  { icon: Package, label: '재고 현황', path: '/inventory' },
-  { icon: Landmark, label: '은행/LC', path: '/banking', roles: ['admin', 'manager', 'staff'] },
   { icon: LayoutDashboard, label: '대시보드', path: '/' },
+  { icon: Landmark, label: 'LC 한도/만기', path: '/banking', roles: ['admin', 'manager', 'staff'] },
+  { icon: Calculator, label: '매출/이익 분석', path: '/customs', roles: ['admin', 'manager', 'staff'] },
 ];
 
 const masterItem: MenuItem = {

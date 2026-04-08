@@ -31,7 +31,7 @@ function ProductForecastBlock({ product }: { product: ProductForecast }) {
         className="flex items-center gap-2 text-sm font-medium hover:text-foreground text-muted-foreground"
       >
         {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-        {product.manufacturer_name} — {product.product_name} ({formatWp(product.spec_wp)})
+        {product.manufacturer_name} — {product.product_name} ({formatWp(product.spec_wp)}, {product.module_width_mm}x{product.module_height_mm}mm)
       </button>
 
       {open && (

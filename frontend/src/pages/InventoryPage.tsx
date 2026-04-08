@@ -91,12 +91,69 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="stock">
+      <Tabs defaultValue="avail">
         <TabsList>
-          <TabsTrigger value="stock">재고 현황</TabsTrigger>
+          <TabsTrigger value="avail">가용재고</TabsTrigger>
           <TabsTrigger value="incoming">미착품</TabsTrigger>
+          <TabsTrigger value="stock">재고상세</TabsTrigger>
           <TabsTrigger value="forecast">수급 전망</TabsTrigger>
         </TabsList>
+
+        {/* 가용재고 — 4 요약카드 + 모듈 크기mm + 물리/예약/배정/가용 */}
+        <TabsContent value="avail">
+          {invError && (
+            <Alert variant="destructive" className="mb-3">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>{invError}</AlertDescription>
+            </Alert>
+          )}
+          {invLoading ? <LoadingSpinner /> : invData && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="rounded-md border p-3"><div className="text-[10px] text-muted-foreground">물리 MW</div><div className="text-sm font-semibold">{(invData.summary.total_physical_kw / 1000).toFixed(2)}</div></div>
+                <div className="rounded-md border p-3"><div className="text-[10px] text-muted-foreground">가용 MW</div><div className="text-sm font-semibold">{(invData.summary.total_available_kw / 1000).toFixed(2)}</div></div>
+                <div className="rounded-md border p-3"><div className="text-[10px] text-muted-foreground">미착품 MW</div><div className="text-sm font-semibold">{(invData.summary.total_incoming_kw / 1000).toFixed(2)}</div></div>
+                <div className="rounded-md border p-3"><div className="text-[10px] text-muted-foreground">총 확보 MW</div><div className="text-sm font-semibold">{(invData.summary.total_secured_kw / 1000).toFixed(2)}</div></div>
+              </div>
+              <div className="rounded-md border overflow-x-auto">
+                <table className="text-xs w-full">
+                  <thead className="bg-muted/50"><tr>
+                    <th className="text-left p-2">제조사</th>
+                    <th className="text-left p-2">모델명</th>
+                    <th className="text-left p-2">규격(Wp)</th>
+                    <th className="text-left p-2">크기(mm)</th>
+                    <th className="text-right p-2">물리 EA</th>
+                    <th className="text-right p-2">물리 MW</th>
+                    <th className="text-right p-2">예약 MW</th>
+                    <th className="text-right p-2">배정 MW</th>
+                    <th className="text-right p-2">가용 EA</th>
+                    <th className="text-right p-2">가용 MW</th>
+                  </tr></thead>
+                  <tbody>
+                    {invData.items.map((it) => {
+                      const physicalEa = it.spec_wp > 0 ? Math.round((it.physical_kw * 1000) / it.spec_wp) : 0;
+                      const availEa = it.spec_wp > 0 ? Math.round((it.available_kw * 1000) / it.spec_wp) : 0;
+                      return (
+                        <tr key={it.product_id} className="border-t">
+                          <td className="p-2">{it.manufacturer_name}</td>
+                          <td className="p-2">{it.product_name}</td>
+                          <td className="p-2">{it.spec_wp}Wp</td>
+                          <td className="p-2">{it.module_width_mm}x{it.module_height_mm}</td>
+                          <td className="p-2 text-right">{physicalEa.toLocaleString()}</td>
+                          <td className="p-2 text-right">{(it.physical_kw / 1000).toFixed(2)}</td>
+                          <td className="p-2 text-right">{(it.reserved_kw / 1000).toFixed(2)}</td>
+                          <td className="p-2 text-right">{(it.allocated_kw / 1000).toFixed(2)}</td>
+                          <td className="p-2 text-right">{availEa.toLocaleString()}</td>
+                          <td className="p-2 text-right font-semibold">{(it.available_kw / 1000).toFixed(2)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </TabsContent>
 
         <TabsContent value="stock">
           {invError && (

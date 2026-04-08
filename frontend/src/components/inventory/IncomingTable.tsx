@@ -42,6 +42,7 @@ export default function IncomingTable({ items, summary }: Props) {
                 <TableHead>품번</TableHead>
                 <TableHead>품명</TableHead>
                 <TableHead className="text-right">규격</TableHead>
+                <TableHead>크기(mm)</TableHead>
                 <TableHead className="text-right">미착품</TableHead>
                 <TableHead className="text-right">미착예약</TableHead>
                 <TableHead className="text-right">가용미착</TableHead>
@@ -54,6 +55,7 @@ export default function IncomingTable({ items, summary }: Props) {
                   <TableCell className="font-mono">{item.product_code}</TableCell>
                   <TableCell>{item.product_name}</TableCell>
                   <TableCell className="text-right">{formatWp(item.spec_wp)}</TableCell>
+                  <TableCell>{item.module_width_mm}x{item.module_height_mm}</TableCell>
                   <TableCell className="text-right font-medium">{formatKw(item.incoming_kw)}</TableCell>
                   <TableCell className="text-right">{formatKw(item.incoming_reserved_kw)}</TableCell>
                   <TableCell className="text-right font-medium text-green-600">{formatKw(item.available_incoming_kw)}</TableCell>

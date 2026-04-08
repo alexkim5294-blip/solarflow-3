@@ -22,7 +22,9 @@ export interface BLShipment {
   bl_id: string;
   bl_number: string;
   po_id?: string;
+  po_number?: string;
   lc_id?: string;
+  lc_number?: string;
   company_id: string;
   manufacturer_id: string;
   manufacturer_name?: string;

@@ -271,6 +271,9 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
   const [autofilled, setAutofilled] = useState<boolean>(false); // 자동채움 여부 표시 (bg-muted 적용용)
   const [poLineRows, setPoLineRows] = useState<POLineRow[]>([]); // D-087: PO 발주품목 + 기입고/잔여 테이블
   const [submitError, setSubmitError] = useState('');
+  // R3: LC 선택 (해외직수입만 필수) — D-095 BL>LC=차단
+  const [lcList, setLcList] = useState<{ lc_id: string; lc_number?: string; po_id: string; amount_usd: number; target_qty?: number; target_mw?: number; status: string; bank_name?: string }[]>([]);
+  const [selLCId, setSelLCId] = useState<string>('');
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { register, reset, setValue, getValues, watch, formState: { isSubmitting, isDirty } } = useForm<FormData>({
@@ -318,6 +321,15 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
       .then(list => setPoList(list ?? []))
       .catch(() => setPoList([]));
   }, [open, editData]);
+
+  /* R3: PO 선택 시 해당 PO의 LC 목록 로드 */
+  useEffect(() => {
+    if (!selPOId) { setLcList([]); setSelLCId(''); return; }
+    fetchWithAuth<typeof lcList>(`/api/v1/lcs?po_id=${selPOId}`)
+      .then((list) => setLcList(list ?? []))
+      .catch(() => setLcList([]));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selPOId]);
 
   /* PO 선택 → 입고 폼 자동 채움 (D-087)
    * 자동 채움: manufacturer_id, company_id, currency, incoterms, payment_terms.
@@ -593,6 +605,43 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
     if (!editData && isImport && !data.actual_arrival) { setSubmitError('실제입항일은 필수입니다'); return; }
     if (!editData && isDomestic && !data.actual_arrival) { setSubmitError('납품일은 필수입니다'); return; }
     if (isGroup && !counterpartId) { setSubmitError('상대법인을 선택해주세요'); return; }
+
+    // R3: 해외직수입 + PO 연결 시 LC 필수 + 잔여 검증 (D-095)
+    if (isImport && selPOId && !selLCId && !editData) {
+      setSubmitError('해외직수입은 LC 선택이 필수입니다');
+      return;
+    }
+    if (selLCId && !editData) {
+      const thisMw = lines.reduce((s, l) => {
+        const prod = products.find((p) => p.product_id === l.product_id);
+        const qty = Number(l.quantity);
+        if (!prod || !qty) return s;
+        return s + (qty * prod.spec_wp) / 1_000_000;
+      }, 0);
+      const lc = lcList.find((x) => x.lc_id === selLCId);
+      const lcMw = lc?.target_mw ?? 0;
+      // 동일 LC의 기존 BL 합산
+      try {
+        const existingBls = await fetchWithAuth<BLShipment[]>(`/api/v1/bls?lc_id=${selLCId}`).catch(() => []);
+        let usedMw = 0;
+        for (const bl of existingBls ?? []) {
+          try {
+            const bls = await fetchWithAuth<{ capacity_kw?: number }[]>(`/api/v1/bls/${bl.bl_id}/lines`);
+            for (const bln of bls ?? []) usedMw += (bln.capacity_kw ?? 0) / 1000;
+          } catch { /* skip */ }
+        }
+        if (lcMw > 0 && (usedMw + thisMw) > lcMw + 1e-6) {
+          setSubmitError('LC 잔여물량을 초과합니다. LC amend가 필요합니다.');
+          return;
+        }
+      } catch { /* skip */ }
+      // PO 잔여 경고만 (차단 X)
+      if (poRemaining && thisMw > poRemaining.remainMw + 1e-6) {
+        // eslint-disable-next-line no-alert
+        const ok = window.confirm(`이번 입고(${thisMw.toFixed(2)}MW)가 PO 잔여(${poRemaining.remainMw.toFixed(2)}MW)를 초과합니다. 계속하시겠습니까?`);
+        if (!ok) return;
+      }
+    }
     // 신규 등록일 때만 라인 검증 + capacity_kw 안전체크
     if (!editData) {
       const validLinesCheck = lines.filter(l => l.product_id && Number(l.quantity) > 0);
@@ -615,6 +664,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
       bl_id: editData?.bl_id,
       bl_number: blNumber,
       po_id: selPOId || undefined,
+      lc_id: selLCId || undefined,
       inbound_type: selType,
       company_id: selCompanyId,
       manufacturer_id: selMfgId || undefined,
@@ -744,6 +794,21 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
                     </>
                   )}
                 </p>
+              )}
+              {/* R3: LC 선택 — 해외직수입에서 PO 선택 시 노출 */}
+              {selPOId && selType === 'import' && (
+                <div className="mt-2 space-y-1.5">
+                  <Label className="text-muted-foreground">LC 연결 (해외직수입 필수)</Label>
+                  <Select value={selLCId || 'none'} onValueChange={(v) => setSelLCId(v === 'none' ? '' : (v ?? ''))}>
+                    <SelectTrigger className="w-full"><Txt text={(() => { const lc = lcList.find((l) => l.lc_id === selLCId); return lc ? `${lc.lc_number ?? lc.lc_id.slice(0,8)} | ${lc.bank_name ?? '—'} | ${lc.amount_usd.toLocaleString()} USD | ${lc.status}` : ''; })()} placeholder="LC 선택" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">미선택</SelectItem>
+                      {lcList.map((lc) => (
+                        <SelectItem key={lc.lc_id} value={lc.lc_id}>{`${lc.lc_number ?? lc.lc_id.slice(0,8)} | ${lc.bank_name ?? '—'} | ${lc.amount_usd.toLocaleString()} USD | ${lc.status}`}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               )}
             </div>
           )}

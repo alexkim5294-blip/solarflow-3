@@ -314,6 +314,33 @@ func (h *BLHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// R3: 입고완료/erp_done 전환 시 면장환율(exchange_rate) NULL 가드 — 해외직수입(USD)만
+	if req.Status != nil && (*req.Status == "completed" || *req.Status == "erp_done") {
+		curData, _, cerr := h.DB.From("bl_shipments").
+			Select("currency, exchange_rate, inbound_type", "exact", false).
+			Eq("bl_id", id).
+			Execute()
+		if cerr == nil {
+			var curRows []struct {
+				Currency     *string  `json:"currency"`
+				ExchangeRate *float64 `json:"exchange_rate"`
+				InboundType  *string  `json:"inbound_type"`
+			}
+			if uerr := json.Unmarshal(curData, &curRows); uerr == nil && len(curRows) > 0 {
+				cur := curRows[0]
+				isUSD := (cur.Currency != nil && *cur.Currency == "USD") || (cur.InboundType != nil && *cur.InboundType == "import")
+				newEx := cur.ExchangeRate
+				if req.ExchangeRate != nil {
+					newEx = req.ExchangeRate
+				}
+				if isUSD && (newEx == nil || *newEx <= 0) {
+					response.RespondError(w, http.StatusBadRequest, "면장환율을 입력해야 입고완료로 전환할 수 있습니다")
+					return
+				}
+			}
+		}
+	}
+
 	data, _, err := h.DB.From("bl_shipments").
 		Update(req, "", "").
 		Eq("bl_id", id).

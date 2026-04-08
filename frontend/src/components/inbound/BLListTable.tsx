@@ -43,6 +43,8 @@ export default function BLListTable({ items, onSelect, onNew, onDelete }: Props)
           <TableHeader>
             <TableRow>
               <TableHead>B/L번호</TableHead>
+              <TableHead>PO번호</TableHead>
+              <TableHead>LC번호</TableHead>
               <TableHead>입고구분</TableHead>
               <TableHead>공급사</TableHead>
               <TableHead>입고현황</TableHead>
@@ -56,6 +58,8 @@ export default function BLListTable({ items, onSelect, onNew, onDelete }: Props)
             {items.map((bl) => (
               <TableRow key={bl.bl_id} className="cursor-pointer hover:bg-accent/50" onClick={() => onSelect(bl)}>
                 <TableCell className="font-mono font-medium">{bl.bl_number}</TableCell>
+                <TableCell className="font-mono">{bl.po_number ?? (bl.po_id ? bl.po_id.slice(0, 8) : '—')}</TableCell>
+                <TableCell className="font-mono">{bl.lc_number ?? (bl.lc_id ? bl.lc_id.slice(0, 8) : '—')}</TableCell>
                 <TableCell>{INBOUND_TYPE_LABEL[bl.inbound_type]}</TableCell>
                 <TableCell>{bl.manufacturer_name ?? '—'}</TableCell>
                 <TableCell><InboundStatusBadge status={bl.status} /></TableCell>

@@ -185,7 +185,115 @@ func (h *BLHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// R1-4: PO 연결된 B/L이면 PO 상태 자동 전환 (draft/contracted → shipping)
+	if req.POID != nil && *req.POID != "" {
+		h.syncPOStatus(*req.POID)
+	}
+
 	response.RespondJSON(w, http.StatusCreated, created[0])
+}
+
+// syncPOStatus — BL 등록/수정/상태변경 시 PO 상태를 자동 전환 (R1-4)
+//  - 해당 PO에 BL이 1건 이상 → shipping
+//  - 해당 PO의 모든 BL 수량 합 >= PO total_qty → completed
+//
+// 주의: 실패는 로그만 남기고 무시 (본 요청 성공에 영향 없음).
+func (h *BLHandler) syncPOStatus(poID string) {
+	// PO 현재 상태 조회
+	poData, _, err := h.DB.From("purchase_orders").
+		Select("po_id, status, total_qty", "exact", false).
+		Eq("po_id", poID).
+		Execute()
+	if err != nil {
+		log.Printf("[PO 상태 동기화] 조회 실패 po_id=%s err=%v", poID, err)
+		return
+	}
+	var pos []struct {
+		POID     string `json:"po_id"`
+		Status   string `json:"status"`
+		TotalQty *int   `json:"total_qty"`
+	}
+	if err := json.Unmarshal(poData, &pos); err != nil || len(pos) == 0 {
+		return
+	}
+	current := pos[0]
+
+	// 해당 PO의 모든 BL + 라인 집계
+	blData, _, err := h.DB.From("bl_shipments").
+		Select("bl_id, status", "exact", false).
+		Eq("po_id", poID).
+		Execute()
+	if err != nil {
+		log.Printf("[PO 상태 동기화] BL 조회 실패 po_id=%s err=%v", poID, err)
+		return
+	}
+	var bls []struct {
+		BLID   string `json:"bl_id"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(blData, &bls); err != nil {
+		return
+	}
+	if len(bls) == 0 {
+		// BL 0건: draft/contracted 유지
+		return
+	}
+
+	// 입고완료된 BL의 수량 합계 계산
+	shippedQty := 0
+	allCompleted := true
+	for _, bl := range bls {
+		// 입고완료 상태가 아니면 전체 완료 아님
+		if bl.Status != "completed" && bl.Status != "erp_done" {
+			allCompleted = false
+		}
+		lineData, _, lerr := h.DB.From("bl_line_items").
+			Select("quantity", "exact", false).
+			Eq("bl_id", bl.BLID).
+			Execute()
+		if lerr != nil {
+			continue
+		}
+		var lines []struct {
+			Quantity int `json:"quantity"`
+		}
+		if err := json.Unmarshal(lineData, &lines); err != nil {
+			continue
+		}
+		if bl.Status == "completed" || bl.Status == "erp_done" {
+			for _, ln := range lines {
+				shippedQty += ln.Quantity
+			}
+		}
+	}
+
+	// 목표 상태 결정
+	targetStatus := current.Status
+	if allCompleted && current.TotalQty != nil && *current.TotalQty > 0 && shippedQty >= *current.TotalQty {
+		targetStatus = "completed"
+	} else {
+		// BL 1건 이상 있고 아직 완료 아니면 shipping
+		targetStatus = "shipping"
+	}
+
+	if targetStatus == current.Status {
+		return
+	}
+	// 사용자 수동 상태(draft/contracted)를 shipping/completed로 자동 승격만 허용
+	// completed → shipping 같은 역전은 금지
+	if current.Status == "completed" && targetStatus != "completed" {
+		return
+	}
+	update := map[string]string{"status": targetStatus}
+	_, _, uerr := h.DB.From("purchase_orders").
+		Update(update, "", "").
+		Eq("po_id", poID).
+		Execute()
+	if uerr != nil {
+		log.Printf("[PO 상태 동기화] 업데이트 실패 po_id=%s target=%s err=%v", poID, targetStatus, uerr)
+		return
+	}
+	log.Printf("[PO 상태 동기화] po_id=%s %s → %s", poID, current.Status, targetStatus)
 }
 
 // Update — PUT /api/v1/bls/{id} — B/L 수정
@@ -221,6 +329,11 @@ func (h *BLHandler) Update(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[B/L 수정 결과 디코딩 실패] %v", err)
 		response.RespondError(w, http.StatusInternalServerError, "응답 데이터 처리에 실패했습니다")
 		return
+	}
+
+	// R1-4: PO 연결된 B/L 상태 변경 시 PO 자동 전환 (shipping → completed 등)
+	if len(updated) > 0 && updated[0].POID != nil && *updated[0].POID != "" {
+		h.syncPOStatus(*updated[0].POID)
 	}
 
 	if len(updated) == 0 {

@@ -24,13 +24,26 @@ const LEGACY_CT: Record<string, string> = {
   exclusive: '독점 (레거시)',
   annual: '연간 (레거시)',
 };
+// R1-4: 사용자는 예정/계약완료만 수동 선택. 선적중/완료는 BL 등록 상태에 따라 백엔드 자동 전환.
 const PO_STATUSES: Record<string, string> = {
-  draft: '초안',
+  draft: '예정',
   contracted: '계약완료',
-  shipping: '선적중',
-  completed: '완료',
+};
+const PO_STATUSES_READONLY: Record<string, string> = {
+  shipping: '선적중 (자동)',
+  completed: '완료 (자동)',
 };
 const INCOTERMS = ['FOB', 'CIF', 'CFR', 'EXW', 'FCA', 'DAP', 'DDP', 'CIP'];
+
+/** R1-3: 날짜 정규화 — "20260407" → "2026-04-07" / "2026-4-7" → "2026-04-07" / "2026-04-07" 유지 */
+function normDate(v: string): string {
+  if (!v) return v;
+  const digits = v.replace(/\D/g, '');
+  if (/^\d{8}$/.test(digits)) return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+  const m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  return v;
+}
 const BALANCE_DAYS = ['30', '45', '60', '90', '120', '180'] as const;
 type BalanceDay = typeof BALANCE_DAYS[number];
 
@@ -168,13 +181,38 @@ export default function POForm({ open, onOpenChange, onSubmit, editData }: Props
         setStatus(d.status ?? 'draft');
         setMemo((d.memo ?? '').replace(/^\[독점\]\s*/, '').replace(/^\[BAF\/CAF\]\s*/, ''));
         setPaymentTerms(parsePT(d.payment_terms ?? ''));
-        setLines([emptyLine()]);
       };
       fillFromPO(editData);
+      setLines([emptyLine()]);
       // 서버에서 최신 fetch
       fetchWithAuth<PurchaseOrder>(`/api/v1/pos/${editData.po_id}`)
         .then((fresh) => { if (fresh) fillFromPO(fresh); })
         .catch(() => { /* 캐시 데이터로 충분 */ });
+      // R1-6: 발주품목 로드 — products 로드 후에도 spec_wp 참조 가능하도록 저장만
+      fetchWithAuth<{
+        po_line_id?: string; product_id: string; quantity: number;
+        unit_price_usd?: number;
+        products?: { spec_wp?: number; product_code?: string };
+      }[]>(`/api/v1/pos/${editData.po_id}/lines`)
+        .then((fresh) => {
+          if (!Array.isArray(fresh) || fresh.length === 0) return;
+          setLines(fresh.map((l) => {
+            // DB: unit_price_usd = $/EA. ¢/Wp = ($/EA ÷ Wp) × 100
+            const specWp = l.products?.spec_wp ?? 0;
+            const centsPerWp = (l.unit_price_usd != null && specWp)
+              ? (l.unit_price_usd / specWp) * 100
+              : 0;
+            return {
+              product_id: l.product_id,
+              inputMode: 'qty' as const,
+              quantity: String(l.quantity),
+              capacityMw: '',
+              unit_price_usd_wp: centsPerWp ? parseFloat(centsPerWp.toPrecision(8)).toString() : '',
+              priceMode: 'cents' as const,
+            };
+          }));
+        })
+        .catch(() => { /* 라인 로드 실패 시 빈 행 유지 */ });
     } else {
       // 신규: 상단 셀렉터가 단일 법인이면 자동, 'all'이면 비움(직접 선택)
       const cid = globalCompanyId && globalCompanyId !== 'all' ? globalCompanyId : '';
@@ -386,17 +424,23 @@ export default function POForm({ open, onOpenChange, onSubmit, editData }: Props
             </div>
             <div className="space-y-1.5">
               <Req>계약일</Req>
-              <Input type="date" value={contractDate} onChange={(e) => setContractDate(e.target.value)} />
+              <Input type="text" placeholder="YYYY-MM-DD 또는 20260407" value={contractDate}
+                onChange={(e) => setContractDate(e.target.value)}
+                onBlur={(e) => setContractDate(normDate(e.target.value))} />
             </div>
             {contractType === 'frame' && (
               <>
                 <div className="space-y-1.5">
                   <Req>계약 시작일</Req>
-                  <Input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
+                  <Input type="text" placeholder="YYYY-MM-DD 또는 20260407" value={periodStart}
+                    onChange={(e) => setPeriodStart(e.target.value)}
+                    onBlur={(e) => setPeriodStart(normDate(e.target.value))} />
                 </div>
                 <div className="space-y-1.5">
                   <Req>계약 종료일</Req>
-                  <Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
+                  <Input type="text" placeholder="YYYY-MM-DD 또는 20260407" value={periodEnd}
+                    onChange={(e) => setPeriodEnd(e.target.value)}
+                    onBlur={(e) => setPeriodEnd(normDate(e.target.value))} />
                 </div>
               </>
             )}
@@ -421,7 +465,9 @@ export default function POForm({ open, onOpenChange, onSubmit, editData }: Props
             <div className="space-y-1.5">
               <Opt>상태</Opt>
               <Select value={status} onValueChange={(v) => setStatus(v ?? 'draft')}>
-                <SelectTrigger className="w-full"><Txt text={PO_STATUSES[status] ?? ''} /></SelectTrigger>
+                <SelectTrigger className="w-full" disabled={status === 'shipping' || status === 'completed'}>
+                  <Txt text={PO_STATUSES[status] ?? PO_STATUSES_READONLY[status] ?? ''} />
+                </SelectTrigger>
                 <SelectContent>
                   {Object.entries(PO_STATUSES).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
                 </SelectContent>

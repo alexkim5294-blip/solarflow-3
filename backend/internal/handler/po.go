@@ -93,7 +93,7 @@ func (h *POHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 	// 비유: 계약서에 첨부된 품목 명세 조회
 	lineData, _, err := h.DB.From("po_line_items").
-		Select("*, products(product_name, spec_wp, module_width_mm, module_height_mm)", "exact", false).
+		Select("*, products(product_code, product_name, spec_wp, module_width_mm, module_height_mm)", "exact", false).
 		Eq("po_id", id).
 		Execute()
 	if err != nil {

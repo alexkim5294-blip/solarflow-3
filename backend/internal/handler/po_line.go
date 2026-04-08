@@ -29,7 +29,7 @@ func (h *POLineHandler) ListByPO(w http.ResponseWriter, r *http.Request) {
 	poID := chi.URLParam(r, "poId")
 
 	data, _, err := h.DB.From("po_line_items").
-		Select("*, products(product_name, spec_wp, module_width_mm, module_height_mm)", "exact", false).
+		Select("*, products(product_code, product_name, spec_wp, module_width_mm, module_height_mm)", "exact", false).
 		Eq("po_id", poID).
 		Execute()
 	if err != nil {

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
@@ -34,6 +35,9 @@ export default function OrdersPage() {
   const [orderCustomerFilter, setOrderCustomerFilter] = useState('');
   const [orderCategoryFilter, setOrderCategoryFilter] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
+  const _loc = useLocation();
+  // R1-1: 사이드바 "수주/수금" 클릭 시 목록 복귀
+  useEffect(() => { setSelectedOrder(null); }, [_loc.key]);
   const [orderFormOpen, setOrderFormOpen] = useState(false);
 
   // 탭 2: 수금

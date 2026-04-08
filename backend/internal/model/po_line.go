@@ -24,6 +24,7 @@ type POLineWithProduct struct {
 
 // ProductSummaryForPOLine — 라인아이템 조회 시 함께 반환되는 품번 요약 정보
 type ProductSummaryForPOLine struct {
+	ProductCode   string `json:"product_code"`
 	ProductName   string `json:"product_name"`
 	SpecWP        int    `json:"spec_wp"`
 	ModuleWidthMM int    `json:"module_width_mm"`

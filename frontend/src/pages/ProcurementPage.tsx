@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -34,6 +35,9 @@ export default function ProcurementPage() {
   const [poMfgFilter, setPoMfgFilter] = useState('');
   const [poTypeFilter, setPoTypeFilter] = useState('');
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  const location = useLocation();
+  // R1-1: 사이드바 "발주/결제" 클릭 시 상세에서 목록으로 복귀
+  useEffect(() => { setSelectedPO(null); }, [location.key]);
   const [poFormOpen, setPoFormOpen] = useState(false);
   const poFilters: Record<string, string> = {};
   if (poStatusFilter) poFilters.status = poStatusFilter;

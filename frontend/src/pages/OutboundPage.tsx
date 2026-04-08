@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
@@ -30,6 +31,9 @@ export default function OutboundPage() {
   const [usageFilter, setUsageFilter] = useState('');
   const [mfgFilter, setMfgFilter] = useState('');
   const [selectedOutbound, setSelectedOutbound] = useState<string | null>(null);
+  const _loc = useLocation();
+  // R1-1: 사이드바 "출고/판매" 클릭 시 목록 복귀
+  useEffect(() => { setSelectedOutbound(null); }, [_loc.key]);
   const [formOpen, setFormOpen] = useState(false);
 
   const [customerFilter, setCustomerFilter] = useState('');

@@ -177,36 +177,69 @@ export default function POForm({ open, onOpenChange, onSubmit, editData }: Props
       };
       fillFromPO(editData);
       setLines([emptyLine()]);
-      // 서버에서 최신 fetch
-      fetchWithAuth<PurchaseOrder>(`/api/v1/pos/${editData.po_id}`)
-        .then((fresh) => { if (fresh) fillFromPO(fresh); })
-        .catch(() => { /* 캐시 데이터로 충분 */ });
-      // R1-6: 발주품목 로드 — products 로드 후에도 spec_wp 참조 가능하도록 저장만
-      fetchWithAuth<{
+
+      // R1-6: PO 상세 + 발주품목 함께 로드
+      // GET /api/v1/pos/{id}는 PODetail(line_items 포함)을 반환. 단일 호출로 처리.
+      type POLineFetched = {
         po_line_id?: string; product_id: string; quantity: number;
         unit_price_usd?: number;
         products?: { spec_wp?: number; product_code?: string };
-      }[]>(`/api/v1/pos/${editData.po_id}/lines`)
+      };
+      type PODetailResp = PurchaseOrder & { line_items?: POLineFetched[] };
+
+      const mapLine = (l: POLineFetched) => {
+        const specWp = l.products?.spec_wp ?? 0;
+        const centsPerWp = (l.unit_price_usd != null && specWp)
+          ? (l.unit_price_usd / specWp) * 100
+          : 0;
+        return {
+          po_line_id: l.po_line_id,
+          product_id: l.product_id,
+          inputMode: 'qty' as const,
+          quantity: String(l.quantity),
+          capacityMw: '',
+          unit_price_usd_wp: centsPerWp ? parseFloat(centsPerWp.toPrecision(8)).toString() : '',
+          priceMode: 'cents' as const,
+        };
+      };
+
+      // 1차: 통합 상세 (line_items 포함)
+      fetchWithAuth<PODetailResp>(`/api/v1/pos/${editData.po_id}`)
         .then((fresh) => {
-          if (!Array.isArray(fresh) || fresh.length === 0) return;
-          setLines(fresh.map((l) => {
-            // DB: unit_price_usd = $/EA. ¢/Wp = ($/EA ÷ Wp) × 100
-            const specWp = l.products?.spec_wp ?? 0;
-            const centsPerWp = (l.unit_price_usd != null && specWp)
-              ? (l.unit_price_usd / specWp) * 100
-              : 0;
-            return {
-              po_line_id: l.po_line_id, // R1-5: 기존 ID 보존
-              product_id: l.product_id,
-              inputMode: 'qty' as const,
-              quantity: String(l.quantity),
-              capacityMw: '',
-              unit_price_usd_wp: centsPerWp ? parseFloat(centsPerWp.toPrecision(8)).toString() : '',
-              priceMode: 'cents' as const,
-            };
-          }));
+          if (!fresh) return;
+          fillFromPO(fresh);
+          if (Array.isArray(fresh.line_items) && fresh.line_items.length > 0) {
+            // eslint-disable-next-line no-console
+            console.log('[POForm] detail.line_items', fresh.line_items.length);
+            setLines(fresh.line_items.map(mapLine));
+            return;
+          }
+          // 폴백: 상세에 line_items가 없으면 별도 엔드포인트로 재시도
+          fetchWithAuth<POLineFetched[]>(`/api/v1/pos/${editData.po_id}/lines`)
+            .then((lineList) => {
+              // eslint-disable-next-line no-console
+              console.log('[POForm] fallback /lines', lineList?.length ?? 0);
+              if (Array.isArray(lineList) && lineList.length > 0) {
+                setLines(lineList.map(mapLine));
+              }
+            })
+            .catch((err) => {
+              // eslint-disable-next-line no-console
+              console.error('[POForm] /lines fetch error', err);
+            });
         })
-        .catch(() => { /* 라인 로드 실패 시 빈 행 유지 */ });
+        .catch((err) => {
+          // eslint-disable-next-line no-console
+          console.error('[POForm] detail fetch error', err);
+          // 상세 실패 시에도 /lines는 시도
+          fetchWithAuth<POLineFetched[]>(`/api/v1/pos/${editData.po_id}/lines`)
+            .then((lineList) => {
+              if (Array.isArray(lineList) && lineList.length > 0) {
+                setLines(lineList.map(mapLine));
+              }
+            })
+            .catch(() => {});
+        });
     } else {
       // 신규: 상단 셀렉터가 단일 법인이면 자동, 'all'이면 비움(직접 선택)
       const cid = globalCompanyId && globalCompanyId !== 'all' ? globalCompanyId : '';

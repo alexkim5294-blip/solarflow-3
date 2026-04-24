@@ -230,6 +230,7 @@ interface POLineRow {
   product_id: string;
   contracted_qty: number;        // PO 계약 수량 (EA)
   shipped_qty: number;           // 동일 PO의 모든 BL에서 합산한 기입고 수량
+  unit_price_usd?: number;       // $/EA (unit_price_usd_wp null 시 역산 fallback용)
   unit_price_usd_wp?: number;
   unit_price_krw_wp?: number;
   item_type: 'main' | 'spare';
@@ -417,6 +418,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
       product_id: l.product_id,
       contracted_qty: l.quantity ?? 0,
       shipped_qty: shippedByProduct[l.product_id] ?? 0,
+      unit_price_usd: l.unit_price_usd,
       unit_price_usd_wp: l.unit_price_usd_wp,
       unit_price_krw_wp: l.unit_price_krw_wp,
       item_type: l.item_type ?? 'main',
@@ -573,7 +575,17 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
         item_type: r.item_type,
         payment_type: r.payment_type,
         unit_price: isImport
-          ? (r.unit_price_usd_wp != null ? String(r.unit_price_usd_wp * 100) : '') // ¢/Wp
+          ? (() => {
+              if (r.unit_price_usd_wp != null) return String(r.unit_price_usd_wp * 100); // $/Wp → ¢/Wp
+              // $/EA → ¢/Wp 역산 (unit_price_usd_wp 미설정 구레코드 대응)
+              if (r.unit_price_usd != null) {
+                const prod = products.find(p => p.product_id === r.product_id);
+                if (prod?.spec_wp && prod.spec_wp > 0) {
+                  return String(parseFloat((r.unit_price_usd / prod.spec_wp * 100).toPrecision(8)));
+                }
+              }
+              return '';
+            })()
           : (r.unit_price_krw_wp != null ? String(Math.round(r.unit_price_krw_wp)) : ''),
         manualInvoice: false,
         invoiceOverride: '',

@@ -424,7 +424,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
       thisShipmentQty: '',
     })));
     // 잔여량 (MW 단위 — 헤더 표시용)
-    const contractedMw = po.total_capacity_mw ?? 0;
+    const contractedMw = po.total_capacity_mw ?? po.total_mw ?? 0;
     const shippedMw = shippedKwTotal / 1000;
     setPoRemaining({ contractedMw, shippedMw, remainMw: Math.max(0, contractedMw - shippedMw) });
   }, [poList, setValue]);

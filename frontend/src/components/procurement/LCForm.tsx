@@ -67,14 +67,21 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<FormData>({ resolver: zodResolver(schema) as any });
 
-  // 모든 법인 + PO 목록(전체) 로드 — D-094 다른 법인 LC 개설 허용
+  // 정적 마스터 — 마운트 시 1회
   useEffect(() => {
     fetchWithAuth<Company[]>('/api/v1/companies').then((list) => setCompanies(list.filter((c) => c.is_active))).catch(() => {});
     fetchWithAuth<Product[]>('/api/v1/products').then(setProducts).catch(() => {});
-    fetchWithAuth<LCRecord[]>('/api/v1/lcs').then(setAllLcs).catch(() => {});
-    // completed PO는 LC 개설 불가 — 변경계약 등록 후 원계약 보호
-    fetchWithAuth<PurchaseOrder[]>('/api/v1/pos').then((list) => setPos(list.filter((p) => p.status !== 'completed'))).catch(() => {});
   }, []);
+
+  // 폼 열 때마다 동적 데이터 갱신
+  // completed PO는 LC 개설 불가이지만 defaultPoId PO는 예외 포함 (PO탭 L/C 추가 시 표시)
+  useEffect(() => {
+    if (!open) return;
+    fetchWithAuth<LCRecord[]>('/api/v1/lcs').then(setAllLcs).catch(() => {});
+    fetchWithAuth<PurchaseOrder[]>('/api/v1/pos')
+      .then((list) => setPos(list.filter((p) => p.status !== 'completed' || p.po_id === defaultPoId)))
+      .catch(() => {});
+  }, [open, defaultPoId]);
 
   // 선택한 개설법인의 은행 목록
   const watchedCompanyId = watch('company_id');

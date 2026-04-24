@@ -616,9 +616,9 @@ export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC,
                                               <td className="px-3 py-1.5" />
                                               <td className="px-3 py-1.5">
                                                 <div className="text-[10px] font-medium">{mLabel}</div>
-                                                {blMw != null && blMw > 0 && (
-                                                  <div className="text-[10px] text-muted-foreground font-mono">{blMw.toFixed(2)} MW</div>
-                                                )}
+                                                <div className="text-[10px] text-muted-foreground font-mono">
+                                                  {blMw != null ? `${blMw.toFixed(2)} MW` : (bl?.loading ? '…' : '—')}
+                                                </div>
                                               </td>
                                               <td className="px-3 py-1.5" />
                                               <td className="px-3 py-1.5 text-center">

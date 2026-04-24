@@ -18,7 +18,6 @@ import { usePOLines, useLCList, useTTList } from '@/hooks/useProcurement';
 import type { BLShipment, BLLineItem } from '@/types/inbound';
 import { PO_STATUS_LABEL, PO_STATUS_COLOR, CONTRACT_TYPE_LABEL, type PurchaseOrder, type POLineItem, type LCRecord, type TTRemittance } from '@/types/procurement';
 import { LC_STATUS_LABEL, LC_STATUS_COLOR, TT_STATUS_LABEL, TT_STATUS_COLOR } from '@/types/procurement';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatUSD, formatNumber } from '@/lib/utils';
 import EmptyState from '@/components/common/EmptyState';
 
@@ -30,26 +29,50 @@ function Field({ label, value }: { label: string; value: string | undefined }) {
 
 function LCSubTable({ items }: { items: LCRecord[] }) {
   if (items.length === 0) return <EmptyState message="연결된 LC가 없습니다" />;
+  const totalUsd = items.reduce((s, l) => s + (l.amount_usd ?? 0), 0);
+  const totalMw  = items.reduce((s, l) => s + (l.target_mw ?? 0), 0);
   return (
     <div className="rounded-md border overflow-x-auto">
-      <Table className="text-xs">
-        <TableHeader><TableRow>
-          <TableHead>LC번호</TableHead><TableHead>은행</TableHead><TableHead>개설일</TableHead>
-          <TableHead className="text-right">금액(USD)</TableHead><TableHead>만기일</TableHead><TableHead>상태</TableHead>
-        </TableRow></TableHeader>
-        <TableBody>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b bg-muted/20">
+            <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">LC번호</th>
+            <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">은행</th>
+            <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">개설일</th>
+            <th className="px-3 py-1.5 text-right font-medium">금액(USD)</th>
+            <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">MW</th>
+            <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">만기일</th>
+            <th className="px-3 py-1.5 text-center font-medium text-muted-foreground">상태</th>
+          </tr>
+        </thead>
+        <tbody>
           {items.map((lc) => (
-            <TableRow key={lc.lc_id}>
-              <TableCell className="font-mono">{lc.lc_number || '—'}</TableCell>
-              <TableCell>{lc.bank_name ?? '—'}</TableCell>
-              <TableCell>{formatDate(lc.open_date ?? '')}</TableCell>
-              <TableCell className="text-right">{formatUSD(lc.amount_usd)}</TableCell>
-              <TableCell>{formatDate(lc.maturity_date ?? '')}</TableCell>
-              <TableCell><span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', LC_STATUS_COLOR[lc.status])}>{LC_STATUS_LABEL[lc.status]}</span></TableCell>
-            </TableRow>
+            <tr key={lc.lc_id} className="border-t hover:bg-muted/10">
+              <td className="px-3 py-2 font-mono font-medium">{lc.lc_number || '—'}</td>
+              <td className="px-3 py-2 text-muted-foreground">{lc.bank_name ?? '—'}</td>
+              <td className="px-3 py-2 text-muted-foreground">{formatDate(lc.open_date ?? '')}</td>
+              <td className="px-3 py-2 text-right font-mono tabular-nums">{formatUSD(lc.amount_usd)}</td>
+              <td className="px-3 py-2 font-mono">{lc.target_mw != null ? `${lc.target_mw.toFixed(2)} MW` : '—'}</td>
+              <td className="px-3 py-2 text-muted-foreground">{formatDate(lc.maturity_date ?? '')}</td>
+              <td className="px-3 py-2 text-center">
+                <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-medium', LC_STATUS_COLOR[lc.status])}>
+                  {LC_STATUS_LABEL[lc.status]}
+                </span>
+              </td>
+            </tr>
           ))}
-        </TableBody>
-      </Table>
+        </tbody>
+        {items.length > 1 && (
+          <tfoot>
+            <tr className="border-t bg-muted/20">
+              <td colSpan={3} className="px-3 py-1.5 text-[10px] text-muted-foreground">합계 {items.length}건</td>
+              <td className="px-3 py-1.5 text-right font-mono font-semibold tabular-nums">{formatUSD(totalUsd)}</td>
+              <td className="px-3 py-1.5 font-mono font-semibold text-[10px]">{totalMw > 0 ? `${totalMw.toFixed(2)} MW` : '—'}</td>
+              <td colSpan={2} />
+            </tr>
+          </tfoot>
+        )}
+      </table>
     </div>
   );
 }
@@ -57,36 +80,47 @@ function LCSubTable({ items }: { items: LCRecord[] }) {
 function TTSubTable({ items, poLines }: { items: TTRemittance[]; poLines: POLineItem[] }) {
   if (items.length === 0) return <EmptyState message="연결된 TT가 없습니다" />;
   const totalUsd = items.reduce((s, t) => s + t.amount_usd, 0);
-  // 송금비율: TT합계 / PO 라인아이템 총액 합계
   const poTotalUsd = poLines.reduce((s, l) => s + (l.total_amount_usd ?? 0), 0);
   const remitRatio = poTotalUsd > 0 ? (totalUsd / poTotalUsd) * 100 : 0;
   return (
-    <div className="space-y-2">
-      <div className="rounded-md border overflow-x-auto">
-        <Table className="text-xs">
-          <TableHeader><TableRow>
-            <TableHead>송금일</TableHead><TableHead className="text-right">금액(USD)</TableHead>
-            <TableHead className="text-right">원화</TableHead><TableHead className="text-right">환율</TableHead>
-            <TableHead>목적</TableHead><TableHead>상태</TableHead>
-          </TableRow></TableHeader>
-          <TableBody>
-            {items.map((tt) => (
-              <TableRow key={tt.tt_id}>
-                <TableCell>{formatDate(tt.remit_date ?? '')}</TableCell>
-                <TableCell className="text-right">{formatUSD(tt.amount_usd)}</TableCell>
-                <TableCell className="text-right">{tt.amount_krw != null ? `${formatNumber(tt.amount_krw)}원` : '—'}</TableCell>
-                <TableCell className="text-right">{tt.exchange_rate?.toFixed(2) ?? '—'}</TableCell>
-                <TableCell>{tt.purpose ?? '—'}</TableCell>
-                <TableCell><span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', TT_STATUS_COLOR[tt.status])}>{TT_STATUS_LABEL[tt.status]}</span></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-      <div className="flex gap-4 text-xs text-muted-foreground">
-        <span>TT 합계: {formatUSD(totalUsd)}</span>
-        <span>송금비율: {remitRatio.toFixed(1)}%</span>
-      </div>
+    <div className="rounded-md border overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b bg-muted/20">
+            <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">송금일</th>
+            <th className="px-3 py-1.5 text-right font-medium">금액(USD)</th>
+            <th className="px-3 py-1.5 text-right font-medium text-muted-foreground">원화</th>
+            <th className="px-3 py-1.5 text-right font-medium text-muted-foreground">환율</th>
+            <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">목적</th>
+            <th className="px-3 py-1.5 text-center font-medium text-muted-foreground">상태</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((tt) => (
+            <tr key={tt.tt_id} className="border-t hover:bg-muted/10">
+              <td className="px-3 py-2 text-muted-foreground">{formatDate(tt.remit_date ?? '')}</td>
+              <td className="px-3 py-2 text-right font-mono tabular-nums">{formatUSD(tt.amount_usd)}</td>
+              <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">{tt.amount_krw != null ? `${formatNumber(tt.amount_krw)}원` : '—'}</td>
+              <td className="px-3 py-2 text-right font-mono text-muted-foreground">{tt.exchange_rate?.toFixed(2) ?? '—'}</td>
+              <td className="px-3 py-2 text-muted-foreground">{tt.purpose ?? '—'}</td>
+              <td className="px-3 py-2 text-center">
+                <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-medium', TT_STATUS_COLOR[tt.status])}>
+                  {TT_STATUS_LABEL[tt.status]}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="border-t bg-muted/20">
+            <td className="px-3 py-1.5 text-[10px] text-muted-foreground">합계 {items.length}건</td>
+            <td className="px-3 py-1.5 text-right font-mono font-semibold tabular-nums">{formatUSD(totalUsd)}</td>
+            <td colSpan={4} className="px-3 py-1.5 text-[10px] text-muted-foreground">
+              송금비율 {remitRatio.toFixed(1)}%
+            </td>
+          </tr>
+        </tfoot>
+      </table>
     </div>
   );
 }

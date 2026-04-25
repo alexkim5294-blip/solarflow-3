@@ -81,6 +81,29 @@ function formatCapacityFromKw(kw: number | null): string {
   return `${kw.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kW`;
 }
 
+function parseIntegerInput(value: string): string {
+  return value.replace(/[^0-9]/g, '');
+}
+
+function formatIntegerInput(value: string | number | null | undefined): string {
+  const raw = String(value ?? '').replace(/[^0-9]/g, '');
+  if (!raw) return '';
+  return Number(raw).toLocaleString('ko-KR');
+}
+
+function normalizeLinesForSnapshot(lines: LineItem[]) {
+  return lines.map(l => ({
+    product_id: l.product_id,
+    po_line_id: l.po_line_id ?? '',
+    quantity: parseIntegerInput(l.quantity),
+    item_type: l.item_type,
+    payment_type: l.payment_type,
+    unit_price: l.unit_price,
+    manualInvoice: l.manualInvoice,
+    invoiceOverride: l.invoiceOverride,
+  }));
+}
+
 /* ── 해외직수입 결제조건 — 계약금 % + 잔금 기간 (30/45/60/90/120/180) ── */
 const IMPORT_BALANCE_DAYS = ['30', '45', '60', '90', '120', '180'] as const;
 type ImportBalanceDay = typeof IMPORT_BALANCE_DAYS[number];
@@ -314,11 +337,14 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
     resolver: zodResolver(schema) as any,
   });
   // 수정 모드 — 변경사항 감지 (RHF isDirty + 보조 state 변경 감지)
-  watch(); // watch all → 이 컴포넌트가 폼 변화에 리렌더
+  const watchedValues = watch(); // watch all → 이 컴포넌트가 폼 변화에 리렌더
   const [initialSnapshot, setInitialSnapshot] = useState<string>('');
   const currentSnapshot = JSON.stringify({
+    form: watchedValues,
     selType, selCompanyId, selMfgId, selWhId, counterpartId,
-    importPT, domesticPT, bafCaf,
+    selPOId, selLCId, importPT, domesticPT, bafCaf,
+    exchangeRateLive, cifAmountKrwDisplay,
+    lines: normalizeLinesForSnapshot(lines),
   });
   const isDirtyAll = editData
     ? (isDirty || currentSnapshot !== initialSnapshot)
@@ -350,10 +376,12 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
 
   /* D-085: PO 목록 로드 (연결 드롭다운용) */
   useEffect(() => {
-    if (!open || editData) return;
-    // completed PO는 입고 신규 등록 불가 — 변경계약 등록 후 원계약 보호
+    if (!open) return;
     fetchWithAuth<POSummary[]>('/api/v1/pos')
-      .then(list => setPoList((list ?? []).filter(p => p.status !== 'completed')))
+      .then(list => {
+        // completed PO는 신규 입고 등록에서 제외하되, 기존 B/L 수정 시 연결 PO는 보여준다.
+        setPoList(editData ? (list ?? []) : (list ?? []).filter(p => p.status !== 'completed'));
+      })
       .catch(() => setPoList([]));
   }, [open, editData]);
 
@@ -389,7 +417,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
    * 자동 채움: manufacturer_id, company_id, currency, incoterms, payment_terms.
    * BL 라인은 PO 발주품목에서 product_id/단가/구분 복사 + po_line_id 연결.
    */
-  const applyPOAutofill = useCallback(async (poId: string) => {
+  const applyPOAutofill = useCallback(async (poId: string, currentBlId?: string) => {
     if (!poId) return;
     // GET /api/v1/pos/{id} — 전체 상세 (currency, payment_terms 포함)
     let po: POSummary | undefined;
@@ -399,18 +427,20 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
       po = poList.find(p => p.po_id === poId);
     }
     if (!po) return;
-    // 입고 유형: USD면 해외직수입, KRW면 국내구매로 기본 추정
-    const inferType: InboundTypeValue = po.currency === 'KRW' ? 'domestic' : 'import';
-    setSelType(inferType);
-    setValue('inbound_type', inferType);
-    setSelCompanyId(po.company_id);
-    setSelMfgId(po.manufacturer_id);
-    setValue('manufacturer_id', po.manufacturer_id);
-    if (po.incoterms) setValue('incoterms', po.incoterms);
-    if (po.payment_terms && inferType === 'import') {
-      setImportPT(parseImportPT(po.payment_terms));
-    } else if (po.payment_terms && inferType === 'domestic') {
-      setDomesticPT(parseDomesticPT(po.payment_terms));
+    if (!currentBlId) {
+      // 입고 유형: USD면 해외직수입, KRW면 국내구매로 기본 추정
+      const inferType: InboundTypeValue = po.currency === 'KRW' ? 'domestic' : 'import';
+      setSelType(inferType);
+      setValue('inbound_type', inferType);
+      setSelCompanyId(po.company_id);
+      setSelMfgId(po.manufacturer_id);
+      setValue('manufacturer_id', po.manufacturer_id);
+      if (po.incoterms) setValue('incoterms', po.incoterms);
+      if (po.payment_terms && inferType === 'import') {
+        setImportPT(parseImportPT(po.payment_terms));
+      } else if (po.payment_terms && inferType === 'domestic') {
+        setDomesticPT(parseDomesticPT(po.payment_terms));
+      }
     }
     setAutofilled(true);
     // PO 발주품목 + 동일 PO 기입고 합산 (product_id별)
@@ -425,6 +455,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
     try {
       const bls = await fetchWithAuth<BLShipment[]>(`/api/v1/bls?po_id=${poId}`);
       for (const bl of bls ?? []) {
+        if (currentBlId && bl.bl_id === currentBlId) continue;
         try {
           const blLines = await fetchWithAuth<{ po_line_id?: string; product_id?: string; quantity?: number; capacity_kw?: number }[]>(`/api/v1/bls/${bl.bl_id}/lines`);
           for (const ln of blLines ?? []) {
@@ -463,6 +494,13 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
     setSelPOId(presetPOId);
     applyPOAutofill(presetPOId);
   }, [open, editData, presetPOId, poList, applyPOAutofill]);
+
+  /* 수정 모드도 신규 등록과 같은 PO/LC 발주 현황을 보여준다. */
+  useEffect(() => {
+    if (!open || !editData?.po_id || poList.length === 0) return;
+    applyPOAutofill(editData.po_id, editData.bl_id);
+    if (editData.lc_id) setSelLCId(editData.lc_id);
+  }, [open, editData?.po_id, editData?.bl_id, editData?.lc_id, poList.length, applyPOAutofill]);
 
   /* presetLCId (LC 탭에서 진입) → LC list 로드 후 자동 선택 */
   useEffect(() => {
@@ -534,46 +572,45 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
       setSelCompanyId(d.company_id);
       setSelMfgId(d.manufacturer_id);
       setSelWhId(d.warehouse_id ?? '');
+      setCounterpartId(d.counterpart_company_id ?? '');
       setSelPOId(d.po_id ?? '');
+      setSelLCId(d.lc_id ?? '');
       setAutoNumber(d.bl_number);
       setBafCaf(/BAF\s*\/\s*CAF/i.test(d.incoterms ?? ''));
       setDeliveryDate(d.actual_arrival?.slice(0, 10) ?? '');
-      setExchangeRateLive(d.exchange_rate != null ? String(d.exchange_rate) : '');
-      setExchangeRateDisplay(d.exchange_rate != null ? d.exchange_rate.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
-      setCifAmountKrwDisplay(d.cif_amount_krw != null ? d.cif_amount_krw.toLocaleString('ko-KR') : '');
-      setCifAmountKrwManual(d.cif_amount_krw != null);
-      // 초기 스냅샷 — 변경사항 비교 기준
-      const initImportPT = d.inbound_type === 'import' ? parseImportPT(d.payment_terms ?? '') : defaultImportPT();
-      const initDomesticPT = d.inbound_type === 'domestic' ? parseDomesticPT(d.payment_terms ?? '') : defaultDomesticPT();
-      setInitialSnapshot(JSON.stringify({
-        selType: d.inbound_type,
-        selCompanyId: d.company_id,
-        selMfgId: d.manufacturer_id,
-        selWhId: d.warehouse_id ?? '',
-        counterpartId: '',
-        importPT: initImportPT,
-        domesticPT: initDomesticPT,
-        bafCaf: /BAF\s*\/\s*CAF/i.test(d.incoterms ?? ''),
-      }));
-      if (d.inbound_type === 'import') setImportPT(parseImportPT(d.payment_terms ?? ''));
-      else if (d.inbound_type === 'domestic') setDomesticPT(parseDomesticPT(d.payment_terms ?? ''));
-      reset({
+      const initExchangeRate = d.exchange_rate != null ? String(d.exchange_rate) : '';
+      const initCifAmount = d.cif_amount_krw != null ? d.cif_amount_krw.toLocaleString('ko-KR') : '';
+      const initFormValues: FormData = {
         inbound_type: d.inbound_type,
         bl_number: d.bl_number,
         manufacturer_id: d.manufacturer_id,
-        exchange_rate: d.exchange_rate != null ? String(d.exchange_rate) : '',
-        etd: d.etd?.slice(0, 10) ?? '', eta: d.eta?.slice(0, 10) ?? '',
+        exchange_rate: initExchangeRate,
+        etd: d.etd?.slice(0, 10) ?? '',
+        eta: d.eta?.slice(0, 10) ?? '',
         actual_arrival: d.actual_arrival?.slice(0, 10) ?? '',
-        port: d.port ?? '', forwarder: d.forwarder ?? '',
-        warehouse_id: d.warehouse_id ?? '', invoice_number: d.invoice_number ?? '', declaration_number: d.declaration_number ?? '',
-        incoterms: d.incoterms ?? '', memo: d.memo ?? '',
-      });
+        port: d.port ?? '',
+        forwarder: d.forwarder ?? '',
+        warehouse_id: d.warehouse_id ?? '',
+        invoice_number: d.invoice_number ?? '',
+        declaration_number: d.declaration_number ?? '',
+        incoterms: d.incoterms ?? '',
+        memo: d.memo ?? '',
+      };
+      setExchangeRateLive(initExchangeRate);
+      setExchangeRateDisplay(d.exchange_rate != null ? d.exchange_rate.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
+      setCifAmountKrwDisplay(initCifAmount);
+      setCifAmountKrwManual(d.cif_amount_krw != null);
+      const initImportPT = d.inbound_type === 'import' ? parseImportPT(d.payment_terms ?? '') : defaultImportPT();
+      const initDomesticPT = d.inbound_type === 'domestic' ? parseDomesticPT(d.payment_terms ?? '') : defaultDomesticPT();
+      if (d.inbound_type === 'import') setImportPT(parseImportPT(d.payment_terms ?? ''));
+      else if (d.inbound_type === 'domestic') setDomesticPT(parseDomesticPT(d.payment_terms ?? ''));
+      reset(initFormValues);
       setLines([emptyLine()]);
       fetchWithAuth<BLLineItem[]>(`/api/v1/bls/${d.bl_id}/lines`)
         .then((apiLines) => {
-          if (!apiLines || apiLines.length === 0) return;
-          setLines(apiLines.map(l => ({
+          const nextLines = apiLines && apiLines.length > 0 ? apiLines.map(l => ({
             product_id: l.product_id,
+            po_line_id: l.po_line_id,
             quantity: String(l.quantity),
             item_type: (l.item_type ?? 'main') as 'main' | 'spare',
             payment_type: (l.payment_type ?? 'paid') as 'paid' | 'free',
@@ -584,15 +621,36 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
               : '',
             manualInvoice: false,
             invoiceOverride: '',
-          })));
+          })) : [emptyLine()];
+          setLines(nextLines);
+          setInitialSnapshot(JSON.stringify({
+            form: initFormValues,
+            selType: d.inbound_type,
+            selCompanyId: d.company_id,
+            selMfgId: d.manufacturer_id,
+            selWhId: d.warehouse_id ?? '',
+            counterpartId: d.counterpart_company_id ?? '',
+            selPOId: d.po_id ?? '',
+            selLCId: d.lc_id ?? '',
+            importPT: initImportPT,
+            domesticPT: initDomesticPT,
+            bafCaf: /BAF\s*\/\s*CAF/i.test(d.incoterms ?? ''),
+            exchangeRateLive: initExchangeRate,
+            cifAmountKrwDisplay: initCifAmount,
+            lines: normalizeLinesForSnapshot(nextLines),
+          }));
         })
-        .catch(() => {});
+        .catch((err) => {
+          setInitialSnapshot('');
+          setSubmitError(err instanceof Error ? `기존 입고 품목을 불러오지 못했습니다: ${err.message}` : '기존 입고 품목을 불러오지 못했습니다');
+        });
     } else {
       const cid = globalCompanyId && globalCompanyId !== 'all' ? globalCompanyId : '';
       setSelType(''); setSelCompanyId(cid); setSelMfgId(''); setSelWhId('');
       setCounterpartId(''); setAutoNumber(''); setImportPT(defaultImportPT()); setDomesticPT(defaultDomesticPT());
-      setBafCaf(false); setDeliveryDate(''); setExchangeRateLive(''); setExchangeRateDisplay(''); setSelPOId('');
+      setBafCaf(false); setDeliveryDate(''); setExchangeRateLive(''); setExchangeRateDisplay(''); setSelPOId(''); setSelLCId('');
       setAutofilled(false); setPoRemaining(null); setPoLineRows([]); setCifAmountKrwDisplay(''); setCifAmountKrwManual(false);
+      setInitialSnapshot('');
       reset({
         inbound_type: '', bl_number: '', manufacturer_id: '',
         exchange_rate: '', etd: '', eta: '', actual_arrival: '',
@@ -647,7 +705,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
   };
 
   const updatePORowQty = (idx: number, v: string) => {
-    setPoLineRows(prev => prev.map((row, i) => i === idx ? { ...row, thisShipmentQty: v.replace(/[^0-9]/g, '') } : row));
+    setPoLineRows(prev => prev.map((row, i) => i === idx ? { ...row, thisShipmentQty: parseIntegerInput(v) } : row));
   };
   const removeLine = (i: number) => setLines(prev => prev.length <= 1 ? prev : prev.filter((_, j) => j !== i));
 
@@ -756,16 +814,25 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
         return;
       }
     }
-    // 신규 등록일 때만 라인 검증 + capacity_kw 안전체크
-    if (!editData) {
-      const validLinesCheck = lines.filter(l => l.product_id && Number(l.quantity) > 0);
-      if (validLinesCheck.length === 0) { setSubmitError('입고 품목을 최소 1개 이상 입력해주세요'); return; }
-      // 모든 line의 product가 products 리스트에 로드돼 있는지 확인 (capacity_kw=0 방지)
-      const missingProd = validLinesCheck.find(l => !products.find(p => p.product_id === l.product_id));
-      if (missingProd) { setSubmitError('품번 정보가 로드되지 않았습니다. 잠시 후 다시 시도해주세요'); return; }
-    }
-
     const validLines = lines.filter(l => l.product_id && Number(l.quantity) > 0);
+    if (validLines.length === 0) { setSubmitError('입고 품목을 최소 1개 이상 입력해주세요'); return; }
+    // 모든 line의 product가 products 리스트에 로드돼 있는지 확인 (capacity_kw=0 방지)
+    const missingProd = validLines.find(l => !products.find(p => p.product_id === l.product_id));
+    if (missingProd) { setSubmitError('품번 정보가 로드되지 않았습니다. 잠시 후 다시 시도해주세요'); return; }
+    const overPoLine = poLineRows.find(row => {
+      const thisBlQty = validLines.reduce((sum, line) => {
+        const matchesLine = row.po_line_id && line.po_line_id
+          ? row.po_line_id === line.po_line_id
+          : row.product_id === line.product_id;
+        return matchesLine ? sum + Number(line.quantity) : sum;
+      }, 0);
+      return row.contracted_qty > 0 && row.shipped_qty + thisBlQty > row.contracted_qty;
+    });
+    if (overPoLine) {
+      const prod = products.find(p => p.product_id === overPoLine.product_id);
+      setSubmitError(`${prod ? productLabel(prod.product_id) : '입고 품목'} 수량이 PO 잔여 수량을 초과합니다.`);
+      return;
+    }
 
     const blNumber = isImport ? (data.bl_number ?? '') : autoNumber;
     const exRate = data.exchange_rate ? parseFloat(data.exchange_rate) : undefined;
@@ -1266,7 +1333,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
                               <td className="px-2 py-1.5 text-right font-medium">{remainMw.toFixed(3)}</td>
                               <td className="px-2 py-1.5">
                                 <div className="flex gap-1 items-center">
-                                  <Input className="h-7 text-xs flex-1 min-w-0 bg-amber-50 border-amber-300 focus-visible:ring-amber-400" inputMode="numeric" value={row.thisShipmentQty}
+                                  <Input className="h-7 text-xs flex-1 min-w-0 bg-amber-50 border-amber-300 focus-visible:ring-amber-400 text-right font-mono tabular-nums" inputMode="numeric" value={formatIntegerInput(row.thisShipmentQty)}
                                     placeholder="0"
                                     onChange={e => updatePORowQty(i, e.target.value)} />
                                   <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-[10px] shrink-0 border-amber-400 hover:bg-amber-100"
@@ -1325,8 +1392,8 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
                           </div>
                           <div className="w-24 space-y-1">
                             <span className="text-[10px] text-blue-600 font-medium">수량EA *</span>
-                            <Input className="h-9 text-xs" inputMode="numeric" value={line.quantity} placeholder="0"
-                              onChange={e => updateLine(idx, 'quantity', e.target.value.replace(/[^0-9]/g, ''))} />
+                            <Input className="h-9 text-xs text-right font-mono tabular-nums" inputMode="numeric" value={formatIntegerInput(line.quantity)} placeholder="0"
+                              onChange={e => updateLine(idx, 'quantity', parseIntegerInput(e.target.value))} />
                           </div>
                           <div className="w-24 space-y-1">
                             <span className="text-[10px] text-blue-600 font-medium">구분 *</span>

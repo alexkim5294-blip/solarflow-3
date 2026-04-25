@@ -13,6 +13,7 @@ import BLLineTable from './BLLineTable';
 import BLLineForm from './BLLineForm';
 import LinkedMemoWidget from '@/components/memo/LinkedMemoWidget';
 import BLForm from './BLForm';
+import { saveBLShipmentWithLines } from '@/lib/blShipment';
 import { useBLDetail, useBLLines } from '@/hooks/useInbound';
 import { fetchWithAuth } from '@/lib/api';
 import { INBOUND_TYPE_LABEL, type BLLineItem } from '@/types/inbound';
@@ -60,12 +61,9 @@ export default function BLDetailView({ blId, onBack }: Props) {
   const isImport = bl.inbound_type === 'import';
 
   const handleUpdateBL = async (data: Record<string, unknown>) => {
-    // bl_id, lines는 PUT 본문에서 제거 (URL 경로 / 별도 엔드포인트)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { bl_id, lines, ...rest } = data;
-    void bl_id; void lines;
-    await fetchWithAuth(`/api/v1/bls/${blId}`, { method: 'PUT', body: JSON.stringify(rest) });
+    await saveBLShipmentWithLines({ ...data, bl_id: blId });
     reloadBL();
+    reloadLines();
   };
 
   const handleCreateLine = async (data: Record<string, unknown>) => {

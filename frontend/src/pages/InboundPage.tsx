@@ -13,6 +13,7 @@ import BLDetailView from '@/components/inbound/BLDetailView';
 import BLForm from '@/components/inbound/BLForm';
 import { INBOUND_TYPE_LABEL, BL_STATUS_LABEL, type InboundType, type BLStatus } from '@/types/inbound';
 import ExcelToolbar from '@/components/excel/ExcelToolbar';
+import { saveBLShipmentWithLines } from '@/lib/blShipment';
 
 /* 필터 드롭다운 표시용 헬퍼 — UUID/영문 대신 한글 표시 */
 function FilterText({ text }: { text: string }) {
@@ -81,46 +82,9 @@ export default function InboundPage() {
   }
 
   const handleCreate = async (formData: Record<string, unknown>) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { lines, bl_id: existingId, ...blData } = formData as any;
-    let blId: string;
+    const existingId = typeof formData.bl_id === 'string' ? formData.bl_id : '';
     try {
-      if (existingId) {
-        // 수정 모드: PUT
-        await fetchWithAuth(`/api/v1/bls/${existingId}`, {
-          method: 'PUT', body: JSON.stringify(blData),
-        });
-        blId = existingId;
-      } else {
-        // 신규 등록: POST
-        const created = await fetchWithAuth<{ bl_id: string }>('/api/v1/bls', {
-          method: 'POST', body: JSON.stringify(blData),
-        });
-        blId = created.bl_id;
-      }
-      // 라인아이템 처리
-      if (Array.isArray(lines) && lines.length > 0) {
-        if (existingId) {
-          // 수정 모드: 기존 라인 전체 삭제 후 재생성
-          const existing = await fetchWithAuth<{ bl_line_id: string }[]>(`/api/v1/bls/${blId}/lines`).catch(() => []);
-          for (const el of existing) {
-            await fetchWithAuth(`/api/v1/bls/${blId}/lines/${el.bl_line_id}`, { method: 'DELETE' }).catch(() => {});
-          }
-        }
-        const failures: string[] = [];
-        for (const line of lines) {
-          try {
-            await fetchWithAuth(`/api/v1/bls/${blId}/lines`, {
-              method: 'POST', body: JSON.stringify({ ...line, bl_id: blId }),
-            });
-          } catch (err) {
-            failures.push(err instanceof Error ? err.message : '알 수 없는 오류');
-          }
-        }
-        if (failures.length > 0) {
-          throw new Error(`품목 ${failures.length}건 등록 실패: ${failures.join('; ')}`);
-        }
-      }
+      await saveBLShipmentWithLines(formData);
       setToast(existingId ? '입고 수정이 완료되었습니다' : '입고등록이 완료되었습니다');
     } finally {
       // 성공/실패 무관하게 목록 새로고침 — 부분 성공도 화면에 반영

@@ -12,6 +12,7 @@ import BLForm from '@/components/inbound/BLForm';
 import BLDetailView from '@/components/inbound/BLDetailView';
 import { LC_STATUS_LABEL, type LCRecord, type LCStatus } from '@/types/procurement';
 import type { Bank, Company } from '@/types/masters';
+import { saveBLShipmentWithLines } from '@/lib/blShipment';
 
 function FT({ text }: { text: string }) {
   return <span className="flex flex-1 text-left truncate" data-slot="select-value">{text}</span>;
@@ -95,27 +96,7 @@ export default function LCPage() {
     setBlFormOpen(true);
   };
   const handleCreateBL = async (formData: Record<string, unknown>) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { lines, bl_id: existingId, ...blData } = formData as any;
-    let blId: string;
-    if (existingId) {
-      await fetchWithAuth(`/api/v1/bls/${existingId}`, { method: 'PUT', body: JSON.stringify(blData) });
-      blId = existingId;
-    } else {
-      const created = await fetchWithAuth<{ bl_id: string }>('/api/v1/bls', { method: 'POST', body: JSON.stringify(blData) });
-      blId = created.bl_id;
-    }
-    if (Array.isArray(lines) && lines.length > 0) {
-      if (existingId) {
-        const existing = await fetchWithAuth<{ bl_line_id: string }[]>(`/api/v1/bls/${blId}/lines`).catch(() => []);
-        for (const el of existing) {
-          await fetchWithAuth(`/api/v1/bls/${blId}/lines/${el.bl_line_id}`, { method: 'DELETE' }).catch(() => {});
-        }
-      }
-      for (const line of lines) {
-        await fetchWithAuth(`/api/v1/bls/${blId}/lines`, { method: 'POST', body: JSON.stringify({ ...line, bl_id: blId }) }).catch(() => {});
-      }
-    }
+    await saveBLShipmentWithLines(formData);
     setBlsVersion(v => v + 1);
   };
 

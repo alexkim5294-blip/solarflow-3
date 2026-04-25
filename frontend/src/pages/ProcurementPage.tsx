@@ -26,6 +26,7 @@ import { useBLList } from '@/hooks/useInbound';
 import BLListTable from '@/components/inbound/BLListTable';
 import BLDetailView from '@/components/inbound/BLDetailView';
 import BLForm from '@/components/inbound/BLForm';
+import { saveBLShipmentWithLines } from '@/lib/blShipment';
 import { INBOUND_TYPE_LABEL, BL_STATUS_LABEL, type InboundType, type BLStatus } from '@/types/inbound';
 
 function FT({ text }: { text: string }) {
@@ -236,27 +237,7 @@ export default function ProcurementPage() {
     reloadPoList(); // DepositStatusPanel용 전체 PO 목록 재동기화
   };
   const handleCreateBL = async (formData: Record<string, unknown>) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { lines, bl_id: existingId, ...blData } = formData as any;
-    let blId: string;
-    if (existingId) {
-      await fetchWithAuth(`/api/v1/bls/${existingId}`, { method: 'PUT', body: JSON.stringify(blData) });
-      blId = existingId;
-    } else {
-      const created = await fetchWithAuth<{ bl_id: string }>('/api/v1/bls', { method: 'POST', body: JSON.stringify(blData) });
-      blId = created.bl_id;
-    }
-    if (Array.isArray(lines) && lines.length > 0) {
-      if (existingId) {
-        const existing = await fetchWithAuth<{ bl_line_id: string }[]>(`/api/v1/bls/${blId}/lines`).catch(() => []);
-        for (const el of existing) {
-          await fetchWithAuth(`/api/v1/bls/${blId}/lines/${el.bl_line_id}`, { method: 'DELETE' }).catch(() => {});
-        }
-      }
-      for (const line of lines) {
-        await fetchWithAuth(`/api/v1/bls/${blId}/lines`, { method: 'POST', body: JSON.stringify({ ...line, bl_id: blId }) }).catch(() => {});
-      }
-    }
+    await saveBLShipmentWithLines(formData);
     reloadBL();
     setBlsVersion(v => v + 1); // LC 탭의 BL 드릴다운 목록 재조회 트리거
   };

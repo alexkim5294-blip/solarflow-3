@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
-import { cn, formatDate, formatUSD, formatNumber } from '@/lib/utils';
+import { cn, formatDate, formatUSD, formatNumber, shortMfgName } from '@/lib/utils';
 import EmptyState from '@/components/common/EmptyState';
 import { TT_STATUS_LABEL, TT_STATUS_COLOR, type TTRemittance } from '@/types/procurement';
 
@@ -20,7 +20,7 @@ export default function TTListTable({ items, onEdit, onNew, onDelete }: Props) {
 
   return (
     <div className="rounded-md border overflow-x-auto">
-      <table className="w-full text-xs">
+      <table className="w-full min-w-[1000px] text-xs">
         <thead>
           <tr className="bg-muted/50 border-b">
             <th className="p-3 text-left font-medium text-muted-foreground">PO번호</th>
@@ -45,7 +45,7 @@ export default function TTListTable({ items, onEdit, onNew, onDelete }: Props) {
                 title="클릭하여 수정"
               >
                 <td className="p-3 font-mono font-medium">{tt.po_number || '—'}</td>
-                <td className="p-3 text-muted-foreground">{tt.manufacturer_name ?? '—'}</td>
+                <td className="p-3 text-muted-foreground">{shortMfgName(tt.manufacturer_name)}</td>
                 <td className="p-3">{formatDate(tt.remit_date ?? '')}</td>
                 <td className="p-3 text-right font-mono font-semibold tabular-nums">{formatUSD(tt.amount_usd)}</td>
                 <td className="p-3 text-right tabular-nums text-muted-foreground">

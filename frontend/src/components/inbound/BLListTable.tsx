@@ -6,10 +6,12 @@ import EmptyState from '@/components/common/EmptyState';
 import ConfirmDialog from '@/components/common/ConfirmDialog';
 import InboundStatusBadge from './InboundStatusBadge';
 import { INBOUND_TYPE_LABEL, type BLShipment, type BLLineItem } from '@/types/inbound';
+import type { Manufacturer } from '@/types/masters';
 import { fetchWithAuth } from '@/lib/api';
+import { useAppStore } from '@/stores/appStore';
 
 interface BLAgg {
-  firstLine?: { name: string; spec: string };
+  firstLine?: { name: string; spec: string; specWp?: number };
   extraCount: number;
   avgCentsPerWp: number;
   totalMw: number;
@@ -23,9 +25,20 @@ interface Props {
 }
 
 export default function BLListTable({ items, onSelect, onNew, onDelete }: Props) {
+  const companies = useAppStore((s) => s.companies);
+  const companyMap = Object.fromEntries(companies.map((c) => [c.company_id, c.company_name]));
+  const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
+  const mfgMap = Object.fromEntries(manufacturers.map((m) => [m.manufacturer_id, m.name_kr]));
   const [agg, setAgg] = useState<Record<string, BLAgg>>({});
   const [deleteTarget, setDeleteTarget] = useState<BLShipment | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // 제조사 목록 1회 로드 (manufacturer_id → name_kr 룩업용)
+  useEffect(() => {
+    fetchWithAuth<Manufacturer[]>('/api/v1/manufacturers')
+      .then((list) => setManufacturers(list ?? []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,6 +58,7 @@ export default function BLListTable({ items, onSelect, onNew, onDelete }: Props)
               firstLine: first ? {
                 name: first.product_name ?? first.products?.product_name ?? '—',
                 spec: first.product_code ?? first.products?.product_code ?? '—',
+                specWp: first.products?.spec_wp,
               } : undefined,
               extraCount: Math.max(0, (lines?.length ?? 0) - 1),
               avgCentsPerWp,
@@ -76,8 +90,8 @@ export default function BLListTable({ items, onSelect, onNew, onDelete }: Props)
 
   return (
     <>
-      <div className="rounded-md border overflow-hidden">
-        <table className="w-full text-xs">
+      <div className="rounded-md border overflow-x-auto">
+        <table className="w-full min-w-[800px] text-xs">
           <thead>
             <tr className="bg-muted/50 border-b">
               <th className="p-3 text-left font-medium text-muted-foreground">B/L 정보</th>
@@ -94,6 +108,9 @@ export default function BLListTable({ items, onSelect, onNew, onDelete }: Props)
                 <tr key={bl.bl_id} className="border-t hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => onSelect(bl)}>
                   {/* B/L 정보 */}
                   <td className="p-3 align-top">
+                    {companyMap[bl.company_id] && (
+                      <div className="text-[10px] text-muted-foreground mb-0.5">{companyMap[bl.company_id]}</div>
+                    )}
                     <div className="font-mono font-semibold">{bl.bl_number}</div>
                     <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
                       PO: {bl.po_number ?? (bl.po_id ? bl.po_id.slice(0, 8) : '—')}
@@ -107,7 +124,9 @@ export default function BLListTable({ items, onSelect, onNew, onDelete }: Props)
 
                   {/* 품목 */}
                   <td className="p-3 align-top min-w-[180px]">
-                    <div className="font-medium">{moduleLabel(bl.manufacturer_name)}</div>
+                    <div className="font-medium">
+                      {moduleLabel(bl.manufacturer_name ?? mfgMap[bl.manufacturer_id], a?.firstLine?.specWp)}
+                    </div>
                     {a?.firstLine ? (
                       <div className="mt-0.5">
                         <div className="truncate max-w-[200px] text-[11px]">{a.firstLine.name}</div>

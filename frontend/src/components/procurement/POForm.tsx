@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useAppStore } from '@/stores/appStore';
 import { fetchWithAuth } from '@/lib/api';
+import { shortMfgName } from '@/lib/utils';
 import type { PurchaseOrder } from '@/types/procurement';
 import type { Company, Manufacturer, Product } from '@/types/masters';
 
@@ -123,6 +124,20 @@ export default function POForm({ open, onOpenChange, onSubmit, editData }: Props
   const [products, setProducts] = useState<Product[]>([]);
   const [submitError, setSubmitError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 빠른 품번 등록 다이얼로그
+  const [qpOpen, setQpOpen] = useState(false);
+  const [qpLineIdx, setQpLineIdx] = useState<number | null>(null);
+  const [qpCode, setQpCode] = useState('');
+  const [qpName, setQpName] = useState('');
+  const [qpWp, setQpWp] = useState('');
+  const [qpWidth, setQpWidth] = useState('');
+  const [qpHeight, setQpHeight] = useState('');
+  const [qpError, setQpError] = useState('');
+  const [qpSubmitting, setQpSubmitting] = useState(false);
+
+  const [incotermOpen, setIncotermOpen] = useState(false);
+  const [incotermHighlight, setIncotermHighlight] = useState(-1);
 
   // 헤더 필드
   const [poNumber, setPoNumber] = useState('');
@@ -483,7 +498,46 @@ export default function POForm({ open, onOpenChange, onSubmit, editData }: Props
     return p ? `${p.product_code} | ${p.product_name} | ${p.spec_wp}Wp` : '';
   };
 
+  const handleQuickProduct = async () => {
+    const wp = parseInt(qpWp, 10);
+    const w  = parseInt(qpWidth, 10);
+    const h  = parseInt(qpHeight, 10);
+    if (!qpCode.trim())   { setQpError('품번코드를 입력하세요'); return; }
+    if (!qpName.trim())   { setQpError('품명을 입력하세요'); return; }
+    if (!wp || wp <= 0)   { setQpError('Wp를 올바르게 입력하세요'); return; }
+    if (!w  || w  <= 0)   { setQpError('폭(mm)을 입력하세요'); return; }
+    if (!h  || h  <= 0)   { setQpError('높이(mm)을 입력하세요'); return; }
+    if (!mfgId)           { setQpError('제조사를 먼저 선택하세요'); return; }
+    setQpSubmitting(true); setQpError('');
+    try {
+      const created = await fetchWithAuth<Product>('/api/v1/products', {
+        method: 'POST',
+        body: JSON.stringify({
+          product_code:    qpCode.trim(),
+          product_name:    qpName.trim(),
+          manufacturer_id: mfgId,
+          spec_wp:         wp,
+          wattage_kw:      wp / 1000,
+          module_width_mm: w,
+          module_height_mm: h,
+        }),
+      });
+      setProducts((prev) => [...prev, created]);
+      if (qpLineIdx !== null) {
+        setLines((prev) => prev.map((l, j) => j === qpLineIdx
+          ? { ...l, product_id: created.product_id, _specWp: created.spec_wp }
+          : l));
+      }
+      setQpOpen(false);
+    } catch (e: any) {
+      setQpError(e?.message ?? '등록 실패');
+    } finally {
+      setQpSubmitting(false);
+    }
+  };
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[82vw] sm:max-w-[82vw] max-h-[85vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader className="pb-1">
@@ -536,20 +590,23 @@ export default function POForm({ open, onOpenChange, onSubmit, editData }: Props
                   <Txt
                     text={(() => {
                       const p = allActivePOs.find((x) => x.po_id === parentPoId);
-                      return p
-                        ? `${p.po_number ?? p.po_id.slice(0, 8)} | ${p.manufacturer_name ?? '—'} | ${(p.total_mw ?? 0).toFixed(1)}MW | ${p.status}`
-                        : '';
+                      if (!p) return '';
+                      const specLabel = p.first_spec_wp ? ` ${p.first_spec_wp}W` : '';
+                      return `${shortMfgName(p.manufacturer_name)}${specLabel} | ${p.po_number ?? p.po_id.slice(0, 8)} | ${(p.total_mw ?? 0).toFixed(1)}MW | ${p.status}`;
                     })()}
                     placeholder="원계약 PO를 선택하세요"
                   />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="_none">— 선택 안함 —</SelectItem>
-                  {allActivePOs.map((p) => (
-                    <SelectItem key={p.po_id} value={p.po_id}>
-                      {`${p.po_number ?? p.po_id.slice(0, 8)} | ${p.manufacturer_name ?? '—'} | ${(p.total_mw ?? 0).toFixed(1)}MW | ${p.status}`}
-                    </SelectItem>
-                  ))}
+                  {allActivePOs.map((p) => {
+                    const specLabel = p.first_spec_wp ? ` ${p.first_spec_wp}W` : '';
+                    return (
+                      <SelectItem key={p.po_id} value={p.po_id}>
+                        {`${shortMfgName(p.manufacturer_name)}${specLabel} | ${p.po_number ?? p.po_id.slice(0, 8)} | ${(p.total_mw ?? 0).toFixed(1)}MW | ${p.status}`}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
               {parentPoId && (() => {
@@ -557,7 +614,7 @@ export default function POForm({ open, onOpenChange, onSubmit, editData }: Props
                 if (!p) return null;
                 return (
                   <div className="rounded bg-amber-100 px-3 py-2 text-xs text-amber-800 grid grid-cols-4 gap-2">
-                    <div><div className="text-amber-600 mb-0.5">제조사</div><div className="font-medium">{p.manufacturer_name ?? '—'}</div></div>
+                    <div><div className="text-amber-600 mb-0.5">제조사</div><div className="font-medium">{shortMfgName(p.manufacturer_name)}</div></div>
                     <div><div className="text-amber-600 mb-0.5">계약용량</div><div className="font-mono font-medium">{(p.total_mw ?? 0).toFixed(1)}MW</div></div>
                     <div><div className="text-amber-600 mb-0.5">계약일</div><div className="font-medium">{p.contract_date?.slice(0, 10) ?? '—'}</div></div>
                     <div><div className="text-amber-600 mb-0.5">상태</div><div className="font-medium">{p.status}</div></div>
@@ -634,12 +691,50 @@ export default function POForm({ open, onOpenChange, onSubmit, editData }: Props
             )}
             <div className="space-y-1.5">
               <Req>선적조건</Req>
-              <Select value={incoterms} onValueChange={(v) => setIncoterms(v ?? '')}>
-                <SelectTrigger className="w-full"><Txt text={incoterms} placeholder="선적조건 선택" /></SelectTrigger>
-                <SelectContent>
-                  {INCOTERMS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <div className="relative">
+                <Input
+                  className="w-full text-sm"
+                  value={incoterms}
+                  placeholder="CIF, FOB… 입력 또는 선택"
+                  maxLength={10}
+                  onChange={(e) => {
+                    setIncoterms(e.target.value.toUpperCase().slice(0, 10));
+                    setIncotermOpen(true);
+                    setIncotermHighlight(-1);
+                  }}
+                  onFocus={() => setIncotermOpen(true)}
+                  onBlur={() => setTimeout(() => { setIncotermOpen(false); setIncotermHighlight(-1); }, 150)}
+                  onKeyDown={(e) => {
+                    const filtered = INCOTERMS.filter(t => !incoterms || t.startsWith(incoterms));
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setIncotermOpen(true);
+                      setIncotermHighlight(prev => Math.min(prev + 1, filtered.length - 1));
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setIncotermHighlight(prev => Math.max(prev - 1, 0));
+                    } else if (e.key === 'Enter' && incotermHighlight >= 0 && filtered[incotermHighlight]) {
+                      e.preventDefault();
+                      setIncoterms(filtered[incotermHighlight]);
+                      setIncotermOpen(false);
+                      setIncotermHighlight(-1);
+                    } else if (e.key === 'Escape') {
+                      setIncotermOpen(false);
+                      setIncotermHighlight(-1);
+                    }
+                  }}
+                />
+                {incotermOpen && INCOTERMS.filter(t => !incoterms || t.startsWith(incoterms)).length > 0 && (
+                  <div className="absolute z-50 top-full left-0 w-full mt-1 rounded-md border bg-popover shadow-md py-1">
+                    {INCOTERMS.filter(t => !incoterms || t.startsWith(incoterms)).map((t, i) => (
+                      <button key={t} type="button"
+                        className={`w-full text-left px-3 py-1.5 text-sm ${i === incotermHighlight ? 'bg-muted font-medium' : 'hover:bg-muted/60'}`}
+                        onMouseDown={(e) => { e.preventDefault(); setIncoterms(t); setIncotermOpen(false); setIncotermHighlight(-1); }}
+                      >{t}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
                 <input type="checkbox" checked={bafCaf} onChange={(e) => setBafCaf(e.target.checked)} />
                 BAF/CAF 포함
@@ -647,19 +742,30 @@ export default function POForm({ open, onOpenChange, onSubmit, editData }: Props
             </div>
             <div className="space-y-1.5">
               <Opt>환율 (USD→KRW)</Opt>
-              <Input inputMode="decimal" value={exchangeRateDisplay} placeholder="환율 소수점 2자리 입력"
+              <Input inputMode="decimal" value={exchangeRateDisplay} placeholder="0.00"
+                className="text-right font-mono"
                 onChange={(e) => {
-                  const raw = e.target.value.replace(/[^0-9.]/g, '');
+                  const raw = e.target.value.replace(/,/g, '').replace(/[^0-9.]/g, '');
                   const parts = raw.split('.');
                   const clamped = parts.length > 1 ? parts[0] + '.' + parts[1].slice(0, 2) : raw;
-                  setExchangeRateDisplay(clamped);
-                  const num = clamped ? parseFloat(clamped) : 0;
+                  const [intStr, decStr] = clamped.split('.');
+                  const intFormatted = intStr ? Number(intStr).toLocaleString('ko-KR') : '';
+                  const display = decStr !== undefined ? intFormatted + '.' + decStr : intFormatted;
+                  setExchangeRateDisplay(display);
+                  const num = parseFloat(clamped) || 0;
                   setExchangeRate(num > 0 ? String(num) : '');
                 }}
+                onFocus={() => setExchangeRateDisplay(exchangeRateDisplay.replace(/,/g, ''))}
                 onBlur={() => {
-                  const num = parseFloat(exchangeRateDisplay);
-                  if (!isNaN(num) && num > 0) setExchangeRateDisplay(num.toFixed(2));
+                  const num = parseFloat(exchangeRateDisplay.replace(/,/g, ''));
+                  if (!isNaN(num) && num > 0) {
+                    setExchangeRateDisplay(num.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                    setExchangeRate(String(num));
+                  }
                 }} />
+              <p className="text-[10px] text-muted-foreground">
+                계약 당일 환율 입력 — 확정 환율은 BL 입고 시 면장 환율로 갱신됩니다
+              </p>
             </div>
             <div className="space-y-1.5">
               <Opt>상태</Opt>
@@ -736,6 +842,12 @@ export default function POForm({ open, onOpenChange, onSubmit, editData }: Props
                       <div className="flex-1 min-w-[200px] space-y-1">
                         <span className="text-[10px] text-blue-600 font-medium">품번 *</span>
                         <Select value={line.product_id} onValueChange={(v) => {
+                          if (v === '__new__') {
+                            setQpLineIdx(idx);
+                            setQpCode(''); setQpName(''); setQpWp(''); setQpWidth(''); setQpHeight(''); setQpError('');
+                            setQpOpen(true);
+                            return;
+                          }
                           const prod = products.find((p) => p.product_id === v);
                           setLines((prev) => prev.map((l, j) => j === idx
                             ? { ...l, product_id: v ?? '', _specWp: prod?.spec_wp ?? 0 }
@@ -750,6 +862,9 @@ export default function POForm({ open, onOpenChange, onSubmit, editData }: Props
                                 {p.product_code} | {p.product_name} | {p.spec_wp}Wp
                               </SelectItem>
                             ))}
+                            <SelectItem value="__new__" className="text-blue-600 font-medium border-t mt-1 pt-1">
+                              + 새 품번 빠른 등록…
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -955,5 +1070,60 @@ export default function POForm({ open, onOpenChange, onSubmit, editData }: Props
         </form>
       </DialogContent>
     </Dialog>
+
+    {/* 빠른 품번 등록 미니 다이얼로그 */}
+    <Dialog open={qpOpen} onOpenChange={(o) => { if (!qpSubmitting) setQpOpen(o); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>새 품번 빠른 등록</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          <div className="rounded-md bg-blue-50 border border-blue-200 px-3 py-2 text-[11px] text-blue-800 leading-relaxed">
+            품번을 빠르게 등록합니다.
+            <span className="font-semibold"> 도구 → 품번</span>과 동일 DB에 바로 반영됩니다.
+            치수·중량 등 추가 정보는 등록 후 도구 → 품번에서 보완해 주세요.
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="col-span-2 space-y-1">
+              <Label className="text-xs">품번코드 *</Label>
+              <Input className="h-8 text-xs" placeholder={products[0]?.product_code ?? '예) 품번코드'} value={qpCode}
+                onChange={(e) => setQpCode(e.target.value)} maxLength={30} />
+            </div>
+            <div className="col-span-2 space-y-1">
+              <Label className="text-xs">품명 *</Label>
+              <Input className="h-8 text-xs" placeholder={products[0]?.product_name ?? '예) 품명'} value={qpName}
+                onChange={(e) => setQpName(e.target.value)} maxLength={100} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Wp *</Label>
+              <Input className="h-8 text-xs" inputMode="numeric" placeholder={products[0]?.spec_wp ? String(products[0].spec_wp) : '635'} value={qpWp}
+                onChange={(e) => setQpWp(e.target.value.replace(/\D/g, ''))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">폭 mm *</Label>
+              <Input className="h-8 text-xs" inputMode="numeric" placeholder="1134" value={qpWidth}
+                onChange={(e) => setQpWidth(e.target.value.replace(/\D/g, ''))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">높이 mm *</Label>
+              <Input className="h-8 text-xs" inputMode="numeric" placeholder="2465" value={qpHeight}
+                onChange={(e) => setQpHeight(e.target.value.replace(/\D/g, ''))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">제조사</Label>
+              <Input className="h-8 text-xs bg-muted" value={mfgName || '(선택 안 됨)'} readOnly />
+            </div>
+          </div>
+          {qpError && <p className="text-xs text-red-500">{qpError}</p>}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" size="sm" onClick={() => setQpOpen(false)} disabled={qpSubmitting}>취소</Button>
+          <Button type="button" size="sm" onClick={handleQuickProduct} disabled={qpSubmitting}>
+            {qpSubmitting ? '등록 중…' : '등록'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

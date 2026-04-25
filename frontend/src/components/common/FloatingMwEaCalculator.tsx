@@ -195,7 +195,7 @@ export default function FloatingMwEaCalculator() {
         type="button"
         aria-label="MW 장수 계산기 열기"
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-5 right-5 z-40 flex h-10 items-center gap-1.5 rounded-full bg-primary px-3 text-primary-foreground shadow-lg hover:shadow-xl transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="fixed bottom-5 right-5 z-[200] flex h-10 items-center gap-1.5 rounded-full bg-primary px-3 text-primary-foreground shadow-lg hover:shadow-xl transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <Calculator className="h-4 w-4 shrink-0" />
         <span className="text-xs font-medium whitespace-nowrap">MW↔장수</span>
@@ -207,7 +207,7 @@ export default function FloatingMwEaCalculator() {
           ref={panelRef}
           role="dialog"
           aria-label="용량 장수 변환 계산기"
-          className="fixed bottom-20 right-5 z-50 w-72 rounded-lg border bg-background shadow-2xl"
+          className="fixed bottom-20 right-5 z-[200] w-72 rounded-lg border bg-background shadow-2xl"
         >
           {/* 헤더 */}
           <div className="flex items-center justify-between border-b px-4 py-2">

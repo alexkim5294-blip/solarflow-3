@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useAppStore } from '@/stores/appStore';
 import { fetchWithAuth } from '@/lib/api';
-import { formatUSD } from '@/lib/utils';
+import { formatUSD, shortMfgName, poMfgSpecLabel, poLineSummary } from '@/lib/utils';
 import type { LCRecord, PurchaseOrder, POLineItem, TTRemittance } from '@/types/procurement';
 import type { Bank, Company, Product } from '@/types/masters';
 
@@ -58,16 +58,21 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
   const [submitError, setSubmitError] = useState('');
   const [poPickerOpen, setPoPickerOpen] = useState(false);
   const [poPickerLines, setPoPickerLines] = useState<Record<string, POLineItem[]>>({});
+  const [filterMfg, setFilterMfg] = useState('');
+  const [allBanks, setAllBanks] = useState<Bank[]>([]);
   // 천단위 표시용 display state
   const [amountUsdDisplay, setAmountUsdDisplay] = useState('');
-  const [targetQtyDisplay, setTargetQtyDisplay] = useState('');;
+  const [targetQtyDisplay, setTargetQtyDisplay] = useState('');
+  const [targetMwDisplay, setTargetMwDisplay] = useState('');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<FormData>({ resolver: zodResolver(schema) as any });
+  const lastManualField = useRef<'qty' | 'mw' | null>(null);
 
   // 정적 마스터 — 마운트 시 1회
   useEffect(() => {
     fetchWithAuth<Company[]>('/api/v1/companies').then((list) => setCompanies(list.filter((c) => c.is_active))).catch(() => {});
     fetchWithAuth<Product[]>('/api/v1/products').then(setProducts).catch(() => {});
+    fetchWithAuth<Bank[]>('/api/v1/banks').then(setAllBanks).catch(() => {});
   }, []);
 
   // 폼 열 때마다 동적 데이터 갱신
@@ -93,22 +98,33 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
   const watchedPoId = watch('po_id');
   useEffect(() => {
     if (!watchedPoId) { setPoLines([]); setPoTts([]); setPoLcs([]); return; }
+    // LC탭 직접 등록 시 PO 선택 → 개설법인 자동 완성 (법인↔PO 불일치 방지)
+    if (!defaultPoId && !editData) {
+      const po = pos.find((p) => p.po_id === watchedPoId);
+      if (po?.company_id) {
+        setValue('company_id', po.company_id, { shouldDirty: true });
+        setValue('bank_id', ''); // 법인 변경 시 은행 초기화
+      }
+    }
     fetchWithAuth<POLineItem[]>(`/api/v1/pos/${watchedPoId}/lines`).then(setPoLines).catch(() => setPoLines([]));
     fetchWithAuth<TTRemittance[]>(`/api/v1/tts?po_id=${watchedPoId}`).then(setPoTts).catch(() => setPoTts([]));
     fetchWithAuth<LCRecord[]>(`/api/v1/lcs?po_id=${watchedPoId}`).then(setPoLcs).catch(() => setPoLcs([]));
-  }, [watchedPoId]);
+  }, [watchedPoId, pos, defaultPoId, editData, setValue]);
 
   useEffect(() => {
     if (open) {
       setSubmitError('');
+      setFilterMfg('');
       if (editData) {
         reset({ lc_number: editData.lc_number ?? '', po_id: editData.po_id, company_id: editData.company_id, bank_id: editData.bank_id, open_date: editData.open_date?.slice(0, 10) ?? '', amount_usd: editData.amount_usd, target_qty: editData.target_qty ?? '', target_mw: editData.target_mw ?? '', usance_days: editData.usance_days ?? '', usance_type: editData.usance_type ?? '', maturity_date: editData.maturity_date?.slice(0, 10) ?? '', status: editData.status, memo: editData.memo ?? '' });
         setAmountUsdDisplay(fmtDecimal(editData.amount_usd?.toString() ?? ''));
         setTargetQtyDisplay(editData.target_qty ? Math.round(editData.target_qty).toLocaleString('ko-KR') : '');
+        setTargetMwDisplay(editData.target_mw != null ? editData.target_mw.toString() : '');
       } else {
         reset({ lc_number: '', po_id: defaultPoId ?? '', company_id: selectedCompanyId ?? '', bank_id: '', open_date: '', amount_usd: '' as unknown as number, target_qty: '', target_mw: '', usance_days: 90, usance_type: 'buyers', maturity_date: '', status: 'opened', memo: '' });
         setAmountUsdDisplay('');
         setTargetQtyDisplay('');
+        setTargetMwDisplay('');
       }
     }
   }, [open, editData, reset, selectedCompanyId, defaultPoId]);
@@ -117,6 +133,7 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
   // 다중 라인 PO 대응: 가중평균 단가(USD/module), 가중평균 spec_wp 사용
   const watchedQty = watch('target_qty');
   useEffect(() => {
+    if (lastManualField.current === 'mw') { lastManualField.current = null; return; }
     if (watchedQty === '' || watchedQty == null) return;
     const qty = Number(watchedQty);
     if (!qty || isNaN(qty) || poLines.length === 0) return;
@@ -132,6 +149,7 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
       const avgUnitUsd = totalUsd / totalQty;
       const mw = (qty * avgSpecWp) / 1_000_000;
       setValue('target_mw', Number(mw.toFixed(4)), { shouldDirty: true });
+      setTargetMwDisplay(mw.toFixed(4));
       const calcAmt = Number((qty * avgUnitUsd).toFixed(2));
       setValue('amount_usd', calcAmt, { shouldDirty: true });
       setAmountUsdDisplay(fmtDecimal(calcAmt.toString()));
@@ -151,6 +169,20 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
     setValue('maturity_date', d.toISOString().slice(0, 10), { shouldDirty: true });
   }, [watchedOpenDate, watchedUsance, setValue]);
 
+  const mfgOptions = useMemo(() => [...new Set(pos.map((p) => p.manufacturer_name).filter(Boolean) as string[])].sort(), [pos]);
+  const filteredPos = useMemo(() => filterMfg ? pos.filter((p) => p.manufacturer_name === filterMfg) : pos, [pos, filterMfg]);
+  const unitPriceCpW = useMemo(() => {
+    const paidLines = poLines.filter((l) => l.payment_type == null || l.payment_type === 'paid');
+    if (!paidLines.length) return null;
+    const totalUsd = paidLines.reduce((s, l) => s + (l.total_amount_usd ?? 0), 0);
+    const totalWp = paidLines.reduce((s, l) => {
+      const prod = products.find((p) => p.product_id === l.product_id);
+      const spec = prod?.spec_wp ?? l.products?.spec_wp ?? l.spec_wp ?? 0;
+      return s + (l.quantity ?? 0) * spec;
+    }, 0);
+    return totalWp > 0 ? (totalUsd / totalWp * 100).toFixed(4) : null;
+  }, [poLines, products]);
+
   const handle = async (data: FormData) => {
     setSubmitError('');
     const payload: Record<string, unknown> = { ...data };
@@ -167,6 +199,9 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
     }
   };
 
+  // PO 행 "LC 추가"에서 열었으면 PO 변경 불가 (실수 방지)
+  const isPoLocked = !!defaultPoId && !editData;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-4xl w-[95vw] max-h-[92vh] overflow-y-auto">
@@ -177,44 +212,78 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
             <div className="space-y-1.5"><Label>LC번호</Label><Input {...register('lc_number')} /></div>
             <div className="space-y-1.5">
               <Label>PO *</Label>
-              <div className="flex gap-2">
-                <Select value={watch('po_id') ?? ''} onValueChange={(v) => setValue('po_id', v ?? '')}><SelectTrigger className="w-full"><Txt text={(() => { const p = pos.find((x) => x.po_id === watch('po_id')); if (!p) return ''; const mw = (p.total_mw ?? 0).toFixed(1); const m = p.contract_date ? p.contract_date.slice(0, 7) : ''; return `${p.po_number || p.po_id.slice(0, 8)} | ${p.manufacturer_name ?? '—'} | ${mw}MW${m ? ` | ${m}` : ''}`; })()} /></SelectTrigger>
-                  <SelectContent>{pos.map((p) => { const mw = (p.total_mw ?? 0).toFixed(1); const m = p.contract_date ? p.contract_date.slice(0, 7) : ''; return <SelectItem key={p.po_id} value={p.po_id}>{`${p.po_number || p.po_id.slice(0, 8)} | ${p.manufacturer_name ?? '—'} | ${mw}MW${m ? ` | ${m}` : ''}`}</SelectItem>; })}</SelectContent>
-                </Select>
-                <Button type="button" variant="outline" size="sm" onClick={async () => {
-                  // F9: 상세 팝업 열 때 라인 정보 프리페치
-                  setPoPickerOpen(true);
-                  const missing = pos.filter((p) => !poPickerLines[p.po_id]);
-                  const results = await Promise.all(missing.map(async (p) => {
-                    try { return [p.po_id, await fetchWithAuth<POLineItem[]>(`/api/v1/pos/${p.po_id}/lines`)] as const; }
-                    catch { return [p.po_id, []] as const; }
-                  }));
-                  setPoPickerLines((prev) => ({ ...prev, ...Object.fromEntries(results) }));
-                }}>상세</Button>
-              </div>
+              {/* 제조사 필터 칩 — PO 고정일 때는 숨김 */}
+              {!isPoLocked && mfgOptions.length > 1 && (
+                <div className="flex flex-wrap gap-1">
+                  <button type="button" onClick={() => setFilterMfg('')} className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${!filterMfg ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:border-primary/60'}`}>전체</button>
+                  {mfgOptions.map((mfg) => (
+                    <button key={mfg} type="button" onClick={() => setFilterMfg(mfg)} className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${filterMfg === mfg ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:border-primary/60'}`}>{mfg}</button>
+                  ))}
+                </div>
+              )}
+              {/* PO 고정: 읽기 전용 표시 */}
+              {isPoLocked ? (
+                <div className="flex items-center gap-2 rounded-lg border border-input bg-muted/30 px-2.5 h-8 text-sm">
+                  <span className="flex-1 truncate text-foreground">
+                    {(() => {
+                      const p = pos.find((x) => x.po_id === watch('po_id'));
+                      if (!p) return '로딩 중…';
+                      const mw = (p.total_mw ?? 0).toFixed(1);
+                      const spec = poLines[0]?.products?.spec_wp ?? poLines[0]?.spec_wp;
+                      const specLabel = spec ? ` ${spec}W` : '';
+                      const co = p.company_name ? `${p.company_name} | ` : '';
+                      return `${co}${shortMfgName(p.manufacturer_name)}${specLabel} | ${p.po_number || p.po_id.slice(0, 8)} | ${mw}MW`;
+                    })()}
+                  </span>
+                  <span className="shrink-0 text-[10px] bg-amber-100 text-amber-700 rounded px-1.5 py-0.5 font-medium">PO 고정</span>
+                </div>
+              ) : (
+                /* PO 드롭다운 — LC 탭 직접 등록 */
+                <div className="flex gap-2">
+                  <Select value={watch('po_id') ?? ''} onValueChange={(v) => setValue('po_id', v ?? '')}><SelectTrigger className="w-full"><Txt text={(() => { const p = pos.find((x) => x.po_id === watch('po_id')); if (!p) return ''; const mw = (p.total_mw ?? 0).toFixed(1); const spec = p.first_spec_wp ?? poLines[0]?.products?.spec_wp ?? poLines[0]?.spec_wp; const specLabel = spec ? ` ${spec}W` : ''; const co = p.company_name ? `${p.company_name} | ` : ''; return `${co}${shortMfgName(p.manufacturer_name)}${specLabel} | ${p.po_number || p.po_id.slice(0, 8)} | ${mw}MW`; })()} /></SelectTrigger>
+                    <SelectContent>{filteredPos.map((p) => { const mw = (p.total_mw ?? 0).toFixed(1); const spec = p.first_spec_wp; const specLabel = spec ? ` ${spec}W` : ''; const co = p.company_name ? `${p.company_name} | ` : ''; return <SelectItem key={p.po_id} value={p.po_id}>{`${co}${shortMfgName(p.manufacturer_name)}${specLabel} | ${p.po_number || p.po_id.slice(0, 8)} | ${mw}MW`}</SelectItem>; })}</SelectContent>
+                  </Select>
+                  <Button type="button" variant="outline" size="sm" onClick={async () => {
+                    // F9: 상세 팝업 열 때 라인 정보 프리페치
+                    setPoPickerOpen(true);
+                    const missing = filteredPos.filter((p) => !poPickerLines[p.po_id]);
+                    const results = await Promise.all(missing.map(async (p) => {
+                      try { return [p.po_id, await fetchWithAuth<POLineItem[]>(`/api/v1/pos/${p.po_id}/lines`)] as const; }
+                      catch { return [p.po_id, []] as const; }
+                    }));
+                    setPoPickerLines((prev) => ({ ...prev, ...Object.fromEntries(results) }));
+                  }}>상세</Button>
+                </div>
+              )}
               {errors.po_id && <p className="text-xs text-destructive">{errors.po_id.message}</p>}
             </div>
           </div>
           {/* PO 연결 현황 — 제조사/품명/규격/잔량MW + 결제 요약 (F10) */}
           {watchedPoId && (() => {
             const po = pos.find((x) => x.po_id === watchedPoId);
-            const firstLine = poLines[0];
-            const firstProd = products.find((p) => p.product_id === firstLine?.product_id);
-            const poTotalUsd = poLines.reduce((s, l) => s + (l.total_amount_usd ?? 0), 0);
+            // 유상 라인만 기준 — 무상(스페어)은 LC 개설 대상 아님
+            const paidLines = poLines.filter((l) => l.payment_type == null || l.payment_type === 'paid');
+            const summary = poLineSummary(poLines, products); // paid 기준
+            const poTotalUsd = paidLines.reduce((s, l) => s + (l.total_amount_usd ?? 0), 0);
+            const paidTotalMw = paidLines.reduce((s, l) => {
+              const prod = products.find((p) => p.product_id === l.product_id);
+              const spec = prod?.spec_wp ?? l.products?.spec_wp ?? l.spec_wp ?? 0;
+              return s + (l.quantity ?? 0) * spec / 1_000_000;
+            }, 0);
             const ttPaid = poTts.reduce((s, t) => s + (t.amount_usd ?? 0), 0);
             const lcOpened = poLcs.filter((l) => !editData || l.lc_id !== editData.lc_id).reduce((s, l) => s + (l.amount_usd ?? 0), 0);
             const remain = Math.max(0, poTotalUsd - lcOpened);
-            const poTotalMw = po?.total_mw ?? 0;
             const lcOpenedMw = poLcs.filter((l) => !editData || l.lc_id !== editData.lc_id).reduce((s, l) => s + (l.target_mw ?? 0), 0);
             // 편집 중일 때: 현재 입력한 target_mw도 포함해 잔량 계산 (실시간 반영)
             const thisLcMw = parseFloat(String(watch('target_mw') ?? 0)) || 0;
-            const remainMw = Math.max(0, poTotalMw - lcOpenedMw - thisLcMw);
+            const remainMw = Math.max(0, paidTotalMw - lcOpenedMw - thisLcMw);
             return (
               <div className="rounded-md border p-3 bg-muted/30 text-xs space-y-2">
-                <div className="grid grid-cols-4 gap-2">
-                  <div><div className="text-muted-foreground">제조사</div><div className="font-medium">{po?.manufacturer_name ?? '—'}</div></div>
-                  <div><div className="text-muted-foreground">품명</div><div className="font-medium truncate">{firstProd?.product_name ?? firstLine?.product_name ?? '—'}</div></div>
-                  <div><div className="text-muted-foreground">규격</div><div className="font-medium truncate">{firstProd?.product_code ?? firstLine?.product_code ?? '—'}{poLines.length > 1 ? ` 외 ${poLines.length - 1}건` : ''}</div></div>
+                <div className="grid grid-cols-5 gap-2">
+                  <div><div className="text-muted-foreground">제조사/규격</div><div className="font-medium">{poMfgSpecLabel(po?.manufacturer_name, poLines, products)}</div></div>
+                  <div><div className="text-muted-foreground">품명</div><div className="font-medium truncate">{summary.productName}</div></div>
+                  <div><div className="text-muted-foreground">품번</div><div className="font-medium truncate">{summary.productCodeWithCount}</div></div>
+                  <div><div className="text-muted-foreground">단가(¢/Wp)</div><div className="font-mono font-medium">{unitPriceCpW ?? '—'}</div></div>
                   <div><div className="text-muted-foreground">발주 잔량</div><div className="font-mono font-semibold">{remainMw.toFixed(2)} MW</div></div>
                 </div>
                 <div className="grid grid-cols-4 gap-2 pt-2 border-t">
@@ -235,8 +304,10 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
                 return c ? c.company_name : '';
               })()} /></SelectTrigger>
                 <SelectContent>{companies.map((c) => {
-                  const lcSum = allLcs.filter((l) => l.company_id === c.company_id && (!editData || l.lc_id !== editData.lc_id) && l.status !== 'settled' && !l.repaid).reduce((s, l) => s + (l.amount_usd ?? 0), 0);
-                  return <SelectItem key={c.company_id} value={c.company_id}>{`${c.company_name} (개설잔액 ${formatUSD(lcSum)})`}</SelectItem>;
+                  const totalLimit = allBanks.filter((b) => b.company_id === c.company_id).reduce((s, b) => s + (b.lc_limit_usd ?? 0), 0);
+                  const lcUsed = allLcs.filter((l) => l.company_id === c.company_id && (!editData || l.lc_id !== editData.lc_id) && l.status !== 'settled' && !l.repaid).reduce((s, l) => s + (l.amount_usd ?? 0), 0);
+                  const remaining = Math.max(0, totalLimit - lcUsed);
+                  return <SelectItem key={c.company_id} value={c.company_id}>{`${c.company_name} (잔여한도 ${formatUSD(remaining)})`}</SelectItem>;
                 })}</SelectContent>
               </Select>{errors.company_id && <p className="text-xs text-destructive">{errors.company_id.message}</p>}
             </div>
@@ -245,12 +316,12 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
               <Select value={watch('bank_id') ?? ''} onValueChange={(v) => setValue('bank_id', v ?? '')}><SelectTrigger className="w-full"><Txt text={(() => {
                 const b = banks.find((x) => x.bank_id === watch('bank_id'));
                 if (!b) return '';
-                const usedSameBank = allLcs.filter((l) => l.bank_id === b.bank_id && (!editData || l.lc_id !== editData.lc_id) && l.status !== 'settled' && !l.repaid).reduce((s, l) => s + (l.amount_usd ?? 0), 0);
+                const usedSameBank = allLcs.filter((l) => l.bank_id === b.bank_id && l.company_id === watchedCompanyId && (!editData || l.lc_id !== editData.lc_id) && l.status !== 'settled' && !l.repaid).reduce((s, l) => s + (l.amount_usd ?? 0), 0);
                 const avail = Math.max(0, (b.lc_limit_usd ?? 0) - usedSameBank);
                 return `${b.bank_name} (가용 ${formatUSD(avail)})`;
               })()} /></SelectTrigger>
                 <SelectContent>{banks.map((b) => {
-                  const usedSameBank = allLcs.filter((l) => l.bank_id === b.bank_id && (!editData || l.lc_id !== editData.lc_id) && l.status !== 'settled' && !l.repaid).reduce((s, l) => s + (l.amount_usd ?? 0), 0);
+                  const usedSameBank = allLcs.filter((l) => l.bank_id === b.bank_id && l.company_id === watchedCompanyId && (!editData || l.lc_id !== editData.lc_id) && l.status !== 'settled' && !l.repaid).reduce((s, l) => s + (l.amount_usd ?? 0), 0);
                   const avail = Math.max(0, (b.lc_limit_usd ?? 0) - usedSameBank);
                   return <SelectItem key={b.bank_id} value={b.bank_id}>{`${b.bank_name} (가용 ${formatUSD(avail)})`}</SelectItem>;
                 })}</SelectContent>
@@ -280,30 +351,13 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5"><Label>개설일</Label><DateInput value={watch('open_date') ?? ''} onChange={(v) => setValue('open_date', v, { shouldDirty: true })} /></div>
             <div className="space-y-1.5">
-              <Label>금액(USD) *</Label>
-              <Input
-                type="text"
-                inputMode="decimal"
-                value={amountUsdDisplay}
-                onChange={(e) => {
-                  const raw = e.target.value.replace(/[^0-9.]/g, '');
-                  setAmountUsdDisplay(fmtDecimal(raw));
-                  const num = parseFloat(raw);
-                  setValue('amount_usd', (isNaN(num) ? '' : num) as unknown as number, { shouldDirty: true });
-                }}
-                placeholder="0.00"
-              />
-              {errors.amount_usd && <p className="text-xs text-destructive">{errors.amount_usd.message}</p>}
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
               <Label>수량(EA)</Label>
               <Input
                 type="text"
                 inputMode="numeric"
                 value={targetQtyDisplay}
                 onChange={(e) => {
+                  lastManualField.current = 'qty';
                   const raw = e.target.value.replace(/[^0-9]/g, '');
                   const num = raw ? parseInt(raw, 10) : undefined;
                   setTargetQtyDisplay(num !== undefined ? num.toLocaleString('ko-KR') : '');
@@ -312,7 +366,63 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
                 placeholder="0"
               />
             </div>
-            <div className="space-y-1.5"><Label>용량(MW)</Label><Input type="number" step="0.0001" {...register('target_mw')} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>용량(MW)</Label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={targetMwDisplay}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^0-9.]/g, '');
+                  setTargetMwDisplay(raw);
+                  const mw = parseFloat(raw);
+                  setValue('target_mw', (isNaN(mw) ? '' : mw) as unknown as number, { shouldDirty: true });
+                  if (!isNaN(mw) && mw > 0 && poLines.length > 0) {
+                    lastManualField.current = 'mw';
+                    const totalQty = poLines.reduce((s, l) => s + (l.quantity ?? 0), 0);
+                    const totalUsd = poLines.reduce((s, l) => s + (l.total_amount_usd ?? 0), 0);
+                    const totalWp = poLines.reduce((s, l) => {
+                      const prod = products.find((p) => p.product_id === l.product_id);
+                      const spec = prod?.spec_wp ?? l.products?.spec_wp ?? l.spec_wp ?? 0;
+                      return s + (l.quantity ?? 0) * spec;
+                    }, 0);
+                    if (totalQty > 0 && totalWp > 0) {
+                      const avgSpecWp = totalWp / totalQty;
+                      const avgUnitUsd = totalUsd / totalQty;
+                      const qty = Math.round((mw * 1_000_000) / avgSpecWp);
+                      setValue('target_qty', qty, { shouldDirty: true });
+                      setTargetQtyDisplay(qty.toLocaleString('ko-KR'));
+                      const calcAmt = Number((qty * avgUnitUsd).toFixed(2));
+                      setValue('amount_usd', calcAmt, { shouldDirty: true });
+                      setAmountUsdDisplay(fmtDecimal(calcAmt.toString()));
+                    }
+                  }
+                }}
+                placeholder="0.0000"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>단가(¢/Wp)</Label>
+              <Input type="text" readOnly value={unitPriceCpW ?? ''} placeholder="PO 선택 시 자동 계산" className="bg-muted/40 text-muted-foreground" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>금액(USD) *</Label>
+            <Input
+              type="text"
+              inputMode="decimal"
+              value={amountUsdDisplay}
+              onChange={(e) => {
+                const raw = e.target.value.replace(/[^0-9.]/g, '');
+                setAmountUsdDisplay(fmtDecimal(raw));
+                const num = parseFloat(raw);
+                setValue('amount_usd', (isNaN(num) ? '' : num) as unknown as number, { shouldDirty: true });
+              }}
+              placeholder="0.00"
+            />
+            {errors.amount_usd && <p className="text-xs text-destructive">{errors.amount_usd.message}</p>}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5"><Label>Usance(일)</Label><Input type="number" {...register('usance_days')} /></div>
@@ -341,39 +451,49 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
         <DialogContent className="w-[92vw] max-w-[1400px] max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>PO 상세 선택</DialogTitle></DialogHeader>
           <div className="rounded-md border overflow-x-auto">
-            <table className="w-full text-xs min-w-[900px]">
+            <table className="w-full text-xs min-w-[1000px]">
               <thead className="bg-muted/50">
                 <tr>
                   <th className="text-left p-2">PO번호</th>
                   <th className="text-left p-2">제조사</th>
                   <th className="text-left p-2">품명</th>
-                  <th className="text-left p-2">규격</th>
+                  <th className="text-left p-2">품번</th>
+                  <th className="text-left p-2">계약일</th>
+                  <th className="text-left p-2">상태</th>
+                  <th className="text-right p-2">수량(EA)</th>
+                  <th className="text-right p-2">Wp</th>
                   <th className="text-right p-2">단가(¢/Wp)</th>
                   <th className="text-right p-2">총금액(USD)</th>
                   <th className="text-right p-2">MW</th>
-                  <th className="p-2"></th>
                 </tr>
               </thead>
               <tbody>
-                {pos.map((p) => {
+                {filteredPos.map((p) => {
                   const plines = poPickerLines[p.po_id] ?? [];
-                  const first = plines[0];
-                  const total = plines.reduce((s, l) => s + (l.total_amount_usd ?? 0), 0);
+                  const paidPlines = plines.filter((l) => l.payment_type == null || l.payment_type === 'paid');
+                  const first = paidPlines[0] ?? plines[0];
+                  const total = paidPlines.reduce((s, l) => s + (l.total_amount_usd ?? 0), 0);
+                  const totalEa = paidPlines.reduce((s, l) => s + (l.quantity ?? 0), 0);
+                  const firstWp = first?.products?.spec_wp ?? first?.spec_wp ?? null;
+                  const statusLabel: Record<string, string> = { draft: '초안', confirmed: '확정', completed: '완료', cancelled: '취소' };
                   return (
                     <tr key={p.po_id} className="border-t hover:bg-accent/30 cursor-pointer" onClick={() => { setValue('po_id', p.po_id, { shouldDirty: true }); setPoPickerOpen(false); }}>
                       <td className="p-2 font-mono"><div className="truncate">{p.po_number || p.po_id.slice(0, 8)}</div></td>
-                      <td className="p-2"><div className="truncate">{p.manufacturer_name ?? '—'}</div></td>
+                      <td className="p-2"><div className="truncate">{shortMfgName(p.manufacturer_name)}</div></td>
                       <td className="p-2">
-                        <div className="truncate">{first?.products?.product_name ?? first?.product_name ?? '—'}{plines.length > 1 ? ` 외 ${plines.length - 1}건` : ''}</div>
+                        <div className="truncate">{first?.products?.product_name ?? first?.product_name ?? '—'}{paidPlines.length > 1 ? ` 외 ${paidPlines.length - 1}건` : ''}</div>
                       </td>
                       <td className="p-2"><div className="truncate">{first?.products?.product_code ?? first?.product_code ?? '—'}</div></td>
+                      <td className="p-2 font-mono">{p.contract_date ? p.contract_date.slice(0, 10) : '—'}</td>
+                      <td className="p-2">{statusLabel[p.status ?? ''] ?? p.status ?? '—'}</td>
+                      <td className="p-2 text-right font-mono">{totalEa > 0 ? totalEa.toLocaleString('ko-KR') : '—'}</td>
+                      <td className="p-2 text-right font-mono">{firstWp != null ? `${firstWp}W` : '—'}</td>
                       <td className="p-2 text-right font-mono">{(() => {
                         const tw = plines.reduce((s, l) => s + (l.quantity ?? 0) * (l.products?.spec_wp ?? l.spec_wp ?? 0), 0);
                         return tw > 0 ? ((total / tw) * 100).toFixed(2) : '—';
                       })()}</td>
                       <td className="p-2 text-right font-mono">{formatUSD(total)}</td>
                       <td className="p-2 text-right font-mono">{(p.total_mw ?? 0).toFixed(2)}</td>
-                      <td className="p-2"><Button type="button" size="sm" variant="outline">선택</Button></td>
                     </tr>
                   );
                 })}

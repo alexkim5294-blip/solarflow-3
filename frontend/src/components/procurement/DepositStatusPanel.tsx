@@ -2,7 +2,8 @@ import { useState, useEffect, Fragment } from 'react';
 import { Plus, ChevronDown, ChevronRight, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fetchWithAuth } from '@/lib/api';
-import { formatUSD, formatDate } from '@/lib/utils';
+import { formatUSD, formatDate, shortMfgName } from '@/lib/utils';
+import { useAppStore } from '@/stores/appStore';
 import type { PurchaseOrder, TTRemittance, POLineItem } from '@/types/procurement';
 import DepositPaymentForm from './DepositPaymentForm';
 
@@ -146,6 +147,8 @@ export interface DepositStatusPanelProps {
    메인 컴포넌트
    ───────────────────────────────────────────── */
 export default function DepositStatusPanel({ pos, tts, onPaymentCreated, onEditTT }: DepositStatusPanelProps) {
+  const companies = useAppStore((s) => s.companies);
+  const companyMap = Object.fromEntries(companies.map((c) => [c.company_id, c.company_name]));
 
   /* ① 계약금 있는 PO만 */
   const depositPOs = pos.filter(p => parseDeposit(p.payment_terms).hasDeposit);
@@ -192,8 +195,8 @@ export default function DepositStatusPanel({ pos, tts, onPaymentCreated, onEditT
 
   return (
     <div className="space-y-0">
-      <div className="rounded-md border overflow-hidden">
-        <table className="w-full text-xs">
+      <div className="rounded-md border overflow-x-auto">
+        <table className="w-full min-w-[900px] text-xs">
           <thead>
             <tr className="bg-muted/50 border-b">
               <th className="p-3 w-6" />
@@ -248,6 +251,9 @@ export default function DepositStatusPanel({ pos, tts, onPaymentCreated, onEditT
 
                     {/* 발주 정보 */}
                     <td className="p-3 align-top">
+                      {companyMap[po.company_id] && (
+                        <div className="text-[10px] text-muted-foreground mb-0.5">{companyMap[po.company_id]}</div>
+                      )}
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-mono font-semibold">
                           {po.po_number ?? po.po_id.slice(0, 8)}
@@ -259,7 +265,7 @@ export default function DepositStatusPanel({ pos, tts, onPaymentCreated, onEditT
                         )}
                       </div>
                       <div className="text-[10px] text-muted-foreground mt-0.5">
-                        {po.manufacturer_name ?? '—'}
+                        {shortMfgName(po.manufacturer_name) ?? '—'}
                       </div>
                       <div className="text-[10px] text-blue-600 mt-0.5">
                         계약금 {dep.depositPercent}%
@@ -515,8 +521,8 @@ function TTSection({
   onEdit?: (tt: TTRemittance) => void;
 }) {
   return (
-    <div className="rounded-md border overflow-hidden">
-      <table className="w-full text-xs">
+    <div className="rounded-md border overflow-x-auto">
+      <table className="w-full min-w-[700px] text-xs">
         <thead>
           <tr className="bg-muted/40 border-b">
             <th className="px-3 py-1.5 text-center font-medium text-muted-foreground w-10">차수</th>

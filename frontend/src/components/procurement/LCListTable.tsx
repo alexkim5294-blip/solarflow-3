@@ -156,8 +156,8 @@ export default function LCListTable({ items, onEdit, onNew, onDelete, onSettle, 
 
   return (
     <>
-      <div className="rounded-md border overflow-hidden">
-        <table className="w-full text-xs">
+      <div className="rounded-md border overflow-x-auto">
+        <table className="w-full min-w-[800px] text-xs">
           <thead>
             <tr className="bg-muted/50 border-b">
               <th className="p-3 text-left font-medium text-muted-foreground">LC 정보</th>

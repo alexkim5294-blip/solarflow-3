@@ -1,9 +1,10 @@
 import { useEffect, useState, Fragment } from 'react';
 import { ChevronDown, ChevronRight, FilePenLine, Plus, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { cn, formatDate, formatUSD, moduleLabel } from '@/lib/utils';
+import { cn, formatDate, formatUSD, moduleLabel, shortMfgName } from '@/lib/utils';
 import EmptyState from '@/components/common/EmptyState';
 import { fetchWithAuth } from '@/lib/api';
+import { useAppStore } from '@/stores/appStore';
 import {
   PO_STATUS_LABEL, PO_STATUS_COLOR, CONTRACT_TYPE_LABEL,
   LC_STATUS_LABEL, LC_STATUS_COLOR,
@@ -32,6 +33,7 @@ interface Props {
   onDelete?: (poId: string) => Promise<void>;
   onDeleteLC?: (lcId: string) => Promise<void>;
   onSelectBL?: (blId: string) => void;
+  aggVersion?: number;
 }
 
 // 행별 집계 (초기 fetch)
@@ -98,7 +100,9 @@ function ProgressRow({
   );
 }
 
-export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC, onDelete, onDeleteLC, onSelectBL }: Props) {
+export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC, onDelete, onDeleteLC, onSelectBL, aggVersion }: Props) {
+  const companies = useAppStore((s) => s.companies);
+  const companyMap = Object.fromEntries(companies.map((c) => [c.company_id, c.company_name]));
   const [agg, setAgg] = useState<Record<string, Agg>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [blDetail, setBlDetail] = useState<Record<string, BLDetail>>({});
@@ -155,7 +159,7 @@ export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC,
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.map(p => p.po_id).join(',')]);
+  }, [items.map(p => p.po_id).join(','), aggVersion]);
 
   // ── 행 펼침 시 BL lazy-load ──
   async function loadBL(poId: string) {
@@ -197,8 +201,8 @@ export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC,
   if (items.length === 0) return <EmptyState message="등록된 PO가 없습니다" actionLabel="새로 등록" onAction={onNew} />;
 
   return (
-    <div className="rounded-md border overflow-hidden">
-      <table className="w-full text-xs">
+    <div className="rounded-md border overflow-x-auto">
+      <table className="w-full min-w-[900px] text-xs">
         <thead>
           <tr className="bg-muted/50 border-b">
             <th className="p-3 w-6" />
@@ -242,6 +246,9 @@ export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC,
 
                   {/* 발주 정보 */}
                   <td className="p-3 align-top">
+                    {companyMap[po.company_id] && (
+                      <div className="text-[10px] text-muted-foreground mb-0.5">{companyMap[po.company_id]}</div>
+                    )}
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="font-mono font-semibold">{po.po_number || '—'}</span>
                       {po.parent_po_id && (
@@ -251,7 +258,7 @@ export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC,
                     {po.contract_date && (
                       <div className="text-[10px] text-muted-foreground font-mono mt-0.5">{formatDate(po.contract_date)}</div>
                     )}
-                    <div className="text-[10px] text-muted-foreground mt-0.5">{po.manufacturer_name ?? '—'}</div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">{shortMfgName(po.manufacturer_name)}</div>
                     {po.parent_po_id && (() => {
                       const p = items.find(x => x.po_id === po.parent_po_id);
                       return p ? <div className="text-[10px] text-muted-foreground">원계약: {p.po_number ?? p.po_id.slice(0, 8)}</div> : null;
@@ -461,7 +468,7 @@ export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC,
                         )}
 
                         {/* ② L/C · 입고 현황 통합 테이블 */}
-                        <div className="rounded-md border bg-white overflow-hidden">
+                        <div className="rounded-md border bg-white overflow-x-auto">
                           <div className="flex items-center justify-between px-3 py-2 bg-muted/30 border-b">
                             <span className="text-[11px] font-semibold">
                               L/C · 입고 현황
@@ -497,7 +504,7 @@ export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC,
                             <table className="w-full text-xs">
                               <thead>
                                 <tr className="border-b bg-muted/20">
-                                  <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">LC번호</th>
+                                  <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">#&nbsp;LC번호</th>
                                   <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">은행</th>
                                   <th className="px-3 py-1.5 text-right font-medium">금액(USD)</th>
                                   <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">모듈 / 규격(W)</th>
@@ -507,7 +514,9 @@ export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC,
                                 </tr>
                               </thead>
                               <tbody>
-                                {a.lcs.map(lc => {
+                                {(() => {
+                                  let blSeq = 0;
+                                  return a.lcs.map((lc, lcIdx) => {
                                   const lcBls = (bl?.bls ?? []).filter(b => b.lc_id === lc.lc_id);
                                   const mLabel = moduleLabel(po.manufacturer_name, a.firstLine?.specWp);
                                   return (
@@ -515,6 +524,7 @@ export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC,
                                       {/* LC 행 */}
                                       <tr className="border-t hover:bg-muted/10 group">
                                         <td className="px-3 py-2 font-mono font-medium">
+                                          <span className="text-[10px] font-normal text-muted-foreground mr-1.5">LC {lcIdx + 1}</span>
                                           {lc.lc_number || '—'}
                                           {lcBls.length > 0 && (
                                             <span className="ml-1.5 text-[10px] text-muted-foreground font-normal">B/L {lcBls.length}건</span>
@@ -597,6 +607,8 @@ export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC,
                                       {/* BL 행 — 항상 표시 */}
                                       {lcBls.length > 0 ? (
                                         lcBls.map(b => {
+                                          blSeq++;
+                                          const seq = blSeq;
                                           const blMw = bl?.blMwMap?.[b.bl_id];
                                           return (
                                             <tr
@@ -607,6 +619,7 @@ export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC,
                                             >
                                               <td className="pl-5 pr-3 py-1.5 font-mono font-medium text-blue-700">
                                                 <span className="text-muted-foreground/60 mr-1">└</span>
+                                                <span className="text-[10px] font-normal text-muted-foreground mr-1.5">B/L {seq}</span>
                                                 <span className="underline underline-offset-2">{b.bl_number || '—'}</span>
                                                 <span className="ml-1.5 text-[10px] text-muted-foreground font-normal font-sans">
                                                   {formatDate(b.etd ?? '')} → {formatDate(b.eta ?? '')}
@@ -639,7 +652,8 @@ export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC,
                                       )}
                                     </Fragment>
                                   );
-                                })}
+                                  });
+                                })()}
                               </tbody>
                               {a.lcs.length > 1 && (
                                 <tfoot>

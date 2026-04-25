@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useAppStore } from '@/stores/appStore';
 import { fetchWithAuth } from '@/lib/api';
-import { formatUSD } from '@/lib/utils';
+import { formatUSD, shortMfgName, poMfgSpecLabel, poLineSummary } from '@/lib/utils';
 import type { TTRemittance, PurchaseOrder, POLineItem } from '@/types/procurement';
 import type { Product } from '@/types/masters';
 
@@ -94,7 +94,7 @@ export default function TTForm({ open, onOpenChange, onSubmit, editData, default
         reset({ po_id: editData.po_id, remit_date: editData.remit_date?.slice(0, 10) ?? '', amount_usd: editData.amount_usd, amount_krw: editData.amount_krw ?? '', exchange_rate: editData.exchange_rate ?? '', purpose: editData.purpose ?? '', status: editData.status, bank_name: editData.bank_name ?? '', memo: editData.memo ?? '' });
         setAmountUsdDisplay(fmtDecimal(editData.amount_usd?.toString() ?? ''));
         setAmountKrwDisplay(editData.amount_krw ? Math.round(editData.amount_krw).toLocaleString('ko-KR') : '');
-        setExchangeRateDisplay(editData.exchange_rate ? Number(editData.exchange_rate).toFixed(2) : '');
+        setExchangeRateDisplay(editData.exchange_rate ? Number(editData.exchange_rate).toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
       } else {
         reset({ po_id: defaultPoId ?? '', remit_date: '', amount_usd: '' as unknown as number, amount_krw: '', exchange_rate: '', purpose: '', status: 'planned', bank_name: '', memo: '' });
         setAmountUsdDisplay('');
@@ -126,21 +126,21 @@ export default function TTForm({ open, onOpenChange, onSubmit, editData, default
         <form onSubmit={handleSubmit(handle)} className="space-y-3">
           <div className="space-y-1.5">
             <Label>PO *</Label>
-            <Select value={watch('po_id') ?? ''} onValueChange={(v) => setValue('po_id', v ?? '')}><SelectTrigger className="w-full"><Txt text={(() => { const p = pos.find((x) => x.po_id === watch('po_id')); if (!p) return ''; const mw = (p.total_mw ?? 0).toFixed(1); const m = p.contract_date ? p.contract_date.slice(0, 7) : ''; return `${p.po_number || p.po_id.slice(0, 8)} | ${p.manufacturer_name ?? '—'} | ${mw}MW${m ? ` | ${m}` : ''}`; })()} /></SelectTrigger>
-              <SelectContent>{pos.map((p) => { const mw = (p.total_mw ?? 0).toFixed(1); const m = p.contract_date ? p.contract_date.slice(0, 7) : ''; return <SelectItem key={p.po_id} value={p.po_id}>{`${p.po_number || p.po_id.slice(0, 8)} | ${p.manufacturer_name ?? '—'} | ${mw}MW${m ? ` | ${m}` : ''}`}</SelectItem>; })}</SelectContent>
+            <Select value={watch('po_id') ?? ''} onValueChange={(v) => setValue('po_id', v ?? '')}><SelectTrigger className="w-full"><Txt text={(() => { const p = pos.find((x) => x.po_id === watch('po_id')); if (!p) return ''; const mw = (p.total_mw ?? 0).toFixed(1); const co = p.company_name ? `${p.company_name} | ` : ''; return `${co}${shortMfgName(p.manufacturer_name)} | ${p.po_number || p.po_id.slice(0, 8)} | ${mw}MW`; })()} /></SelectTrigger>
+              <SelectContent>{pos.map((p) => { const mw = (p.total_mw ?? 0).toFixed(1); const co = p.company_name ? `${p.company_name} | ` : ''; return <SelectItem key={p.po_id} value={p.po_id}>{`${co}${shortMfgName(p.manufacturer_name)} | ${p.po_number || p.po_id.slice(0, 8)} | ${mw}MW`}</SelectItem>; })}</SelectContent>
             </Select>{errors.po_id && <p className="text-xs text-destructive">{errors.po_id.message}</p>}
           </div>
-          {/* PO 선택 시 제조사/품명/규격/총금액 정보 박스 */}
+          {/* PO 선택 시 제조사/품명/품번/총금액 정보 박스 — 공통 라벨 사용 (LCForm과 통일) */}
           {watchedPoId && (() => {
             const po = pos.find((x) => x.po_id === watchedPoId);
-            const firstLine = poLines[0];
-            const firstProd = products.find((p) => p.product_id === firstLine?.product_id);
-            const poTotalUsd = poLines.reduce((s, l) => s + (l.total_amount_usd ?? 0), 0);
+            const summary = poLineSummary(poLines, products); // 유상 라인 기준
+            const paidLines = poLines.filter((l) => l.payment_type == null || l.payment_type === 'paid');
+            const poTotalUsd = paidLines.reduce((s, l) => s + (l.total_amount_usd ?? 0), 0);
             return (
               <div className="rounded-md border p-3 bg-muted/30 text-xs grid grid-cols-4 gap-2">
-                <div><div className="text-muted-foreground">제조사</div><div className="font-medium">{po?.manufacturer_name ?? '—'}</div></div>
-                <div><div className="text-muted-foreground">품명</div><div className="font-medium truncate">{firstProd?.product_name ?? firstLine?.product_name ?? '—'}</div></div>
-                <div><div className="text-muted-foreground">규격</div><div className="font-medium truncate">{firstProd?.product_code ?? firstLine?.product_code ?? '—'}{poLines.length > 1 ? ` 외 ${poLines.length - 1}건` : ''}</div></div>
+                <div><div className="text-muted-foreground">제조사/규격</div><div className="font-medium">{poMfgSpecLabel(po?.manufacturer_name, poLines, products)}</div></div>
+                <div><div className="text-muted-foreground">품명</div><div className="font-medium truncate">{summary.productName}</div></div>
+                <div><div className="text-muted-foreground">품번</div><div className="font-medium truncate">{summary.productCodeWithCount}</div></div>
                 <div><div className="text-muted-foreground">PO총액</div><div className="font-mono font-semibold">{formatUSD(poTotalUsd)}</div></div>
               </div>
             );
@@ -153,10 +153,17 @@ export default function TTForm({ open, onOpenChange, onSubmit, editData, default
                 type="text"
                 inputMode="decimal"
                 value={amountUsdDisplay}
+                className="text-right font-mono"
+                placeholder="0.00"
                 onChange={(e) => {
-                  const raw = e.target.value.replace(/[^0-9.]/g, '');
-                  setAmountUsdDisplay(fmtDecimal(raw));
-                  const num = parseFloat(raw);
+                  const raw = e.target.value.replace(/,/g, '').replace(/[^0-9.]/g, '');
+                  const parts = raw.split('.');
+                  const clamped = parts.length > 1 ? parts[0] + '.' + parts[1].slice(0, 2) : raw;
+                  const [intStr, decStr] = clamped.split('.');
+                  const intFormatted = intStr ? Number(intStr).toLocaleString('ko-KR') : '';
+                  const display = decStr !== undefined ? intFormatted + '.' + decStr : intFormatted;
+                  setAmountUsdDisplay(display);
+                  const num = parseFloat(clamped);
                   setValue('amount_usd', (isNaN(num) ? '' : num) as unknown as number, { shouldDirty: true });
                   // USD 변경 시 환율 있으면 원화 자동 계산
                   const rateVal = watch('exchange_rate');
@@ -166,7 +173,14 @@ export default function TTForm({ open, onOpenChange, onSubmit, editData, default
                     setValue('amount_krw', krw as unknown as number, { shouldDirty: true });
                   }
                 }}
-                placeholder="0.00"
+                onFocus={() => setAmountUsdDisplay(amountUsdDisplay.replace(/,/g, ''))}
+                onBlur={() => {
+                  const num = parseFloat(amountUsdDisplay.replace(/,/g, ''));
+                  if (!isNaN(num) && num > 0) {
+                    setAmountUsdDisplay(num.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                    setValue('amount_usd', num as unknown as number, { shouldDirty: true });
+                  }
+                }}
               />
               {errors.amount_usd && <p className="text-xs text-destructive">{errors.amount_usd.message}</p>}
             </div>
@@ -182,16 +196,18 @@ export default function TTForm({ open, onOpenChange, onSubmit, editData, default
               <Input
                 type="text"
                 inputMode="decimal"
-                placeholder="1,380.50"
+                placeholder="0.00"
                 value={exchangeRateDisplay}
+                className="text-right font-mono"
                 onChange={(e) => {
-                  // 숫자와 소수점만 허용, 소수점 2자리까지
-                  const raw = e.target.value.replace(/[^0-9.]/g, '');
+                  // 천단위 콤마 + 소수점 2자리까지
+                  const raw = e.target.value.replace(/,/g, '').replace(/[^0-9.]/g, '');
                   const parts = raw.split('.');
-                  const clamped = parts.length > 1
-                    ? parts[0] + '.' + parts[1].slice(0, 2)
-                    : raw;
-                  setExchangeRateDisplay(clamped);
+                  const clamped = parts.length > 1 ? parts[0] + '.' + parts[1].slice(0, 2) : raw;
+                  const [intStr, decStr] = clamped.split('.');
+                  const intFormatted = intStr ? Number(intStr).toLocaleString('ko-KR') : '';
+                  const display = decStr !== undefined ? intFormatted + '.' + decStr : intFormatted;
+                  setExchangeRateDisplay(display);
                   const rateNum = clamped ? parseFloat(clamped) : undefined;
                   setValue('exchange_rate', (rateNum ?? '') as unknown as number, { shouldDirty: true });
                   // 환율 입력 시 원화 자동 계산
@@ -202,10 +218,12 @@ export default function TTForm({ open, onOpenChange, onSubmit, editData, default
                     setValue('amount_krw', krw as unknown as number, { shouldDirty: true });
                   }
                 }}
+                onFocus={() => setExchangeRateDisplay(exchangeRateDisplay.replace(/,/g, ''))}
                 onBlur={() => {
-                  const rateNum = parseFloat(exchangeRateDisplay);
+                  const rateNum = parseFloat(exchangeRateDisplay.replace(/,/g, ''));
                   if (!isNaN(rateNum) && rateNum > 0) {
-                    setExchangeRateDisplay(rateNum.toFixed(2));
+                    setExchangeRateDisplay(rateNum.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                    setValue('exchange_rate', rateNum as unknown as number, { shouldDirty: true });
                   }
                 }}
               />
@@ -221,13 +239,14 @@ export default function TTForm({ open, onOpenChange, onSubmit, editData, default
                 type="text"
                 inputMode="numeric"
                 value={amountKrwDisplay}
+                className="text-right font-mono"
+                placeholder="자동 계산 또는 직접 입력"
                 onChange={(e) => {
                   const raw = e.target.value.replace(/[^0-9]/g, '');
                   const num = raw ? parseInt(raw, 10) : undefined;
                   setAmountKrwDisplay(num !== undefined ? num.toLocaleString('ko-KR') : '');
                   setValue('amount_krw', (num ?? '') as unknown as number, { shouldDirty: true });
                 }}
-                placeholder="자동 계산 또는 직접 입력"
               />
             </div>
           </div>

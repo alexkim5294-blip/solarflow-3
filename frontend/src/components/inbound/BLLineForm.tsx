@@ -193,11 +193,23 @@ export default function BLLineForm({ open, onOpenChange, onSubmit, editData, blI
           {currency === 'USD' && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5"><Label>Invoice 금액(USD)</Label><Input type="number" step="0.01" {...register('invoice_amount_usd')} /></div>
-              <div className="space-y-1.5"><Label>단가(USD/Wp)</Label><Input type="number" step="0.0001" {...register('unit_price_usd_wp')} /></div>
+              <div className="space-y-1.5">
+                <Label>단가(USD/Wp){selPaymentType === 'free' && ' — 무상 해당없음'}</Label>
+                <Input type="number" step="0.0001" {...register('unit_price_usd_wp')}
+                  readOnly={selPaymentType === 'free'}
+                  className={selPaymentType === 'free' ? 'bg-muted text-muted-foreground' : ''}
+                />
+              </div>
             </div>
           )}
           {currency === 'KRW' && (
-            <div className="space-y-1.5"><Label>단가(KRW/Wp)</Label><Input type="number" step="0.01" {...register('unit_price_krw_wp')} /></div>
+            <div className="space-y-1.5">
+              <Label>단가(KRW/Wp){selPaymentType === 'free' && ' — 무상 해당없음'}</Label>
+              <Input type="number" step="0.01" {...register('unit_price_krw_wp')}
+                readOnly={selPaymentType === 'free'}
+                className={selPaymentType === 'free' ? 'bg-muted text-muted-foreground' : ''}
+              />
+            </div>
           )}
 
           <div className="space-y-1.5"><Label>메모</Label><Textarea {...register('memo')} rows={2} /></div>

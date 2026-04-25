@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { formatUSD } from '@/lib/utils';
+import { formatUSD, shortMfgName } from '@/lib/utils';
 import type { PurchaseOrder } from '@/types/procurement';
 
 interface DepositInfo {
@@ -34,9 +34,12 @@ export default function DepositPaymentForm({ open, po, depositInfo, paidUsd, nex
   const remainingUsd = Math.max(0, depositInfo.depositAmountUsd - paidUsd);
 
   const [remitDate, setRemitDate] = useState('');
-  const [amountUsd, setAmountUsd] = useState('');
-  const [exchangeRate, setExchangeRate] = useState('');
-  const [amountKrw, setAmountKrw] = useState('');
+  const [amountUsd, setAmountUsd] = useState(''); // raw (콤마 없음, 계산용)
+  const [amountUsdDisplay, setAmountUsdDisplay] = useState(''); // 표시용 (천단위 콤마)
+  const [exchangeRate, setExchangeRate] = useState(''); // raw (콤마 없음, 계산용)
+  const [exchangeRateDisplay, setExchangeRateDisplay] = useState(''); // 표시용 (천단위 콤마)
+  const [amountKrw, setAmountKrw] = useState(''); // raw (콤마 없음)
+  const [amountKrwDisplay, setAmountKrwDisplay] = useState(''); // 표시용 (천단위 콤마)
   const [bankName, setBankName] = useState('');
   const [status, setStatus] = useState<'completed' | 'planned'>('completed');
   const [memo, setMemo] = useState('');
@@ -49,8 +52,11 @@ export default function DepositPaymentForm({ open, po, depositInfo, paidUsd, nex
       const today = new Date().toISOString().slice(0, 10);
       setRemitDate(today);
       setAmountUsd(remainingUsd > 0 ? remainingUsd.toFixed(2) : '');
+      setAmountUsdDisplay(remainingUsd > 0 ? remainingUsd.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
       setExchangeRate('');
+      setExchangeRateDisplay('');
       setAmountKrw('');
+      setAmountKrwDisplay('');
       setBankName('');
       setStatus('completed');
       setMemo('');
@@ -63,7 +69,9 @@ export default function DepositPaymentForm({ open, po, depositInfo, paidUsd, nex
     const usd = parseFloat(amountUsd);
     const rate = parseFloat(exchangeRate);
     if (usd > 0 && rate > 0) {
-      setAmountKrw(Math.round(usd * rate).toString());
+      const krw = Math.round(usd * rate);
+      setAmountKrw(String(krw));
+      setAmountKrwDisplay(krw.toLocaleString('ko-KR'));
     }
   }, [amountUsd, exchangeRate]);
 
@@ -109,7 +117,7 @@ export default function DepositPaymentForm({ open, po, depositInfo, paidUsd, nex
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">제조사</span>
-            <span>{po.manufacturer_name ?? '—'}</span>
+            <span>{shortMfgName(po.manufacturer_name)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">계약금 ({depositInfo.depositPercent}%)</span>
@@ -163,20 +171,55 @@ export default function DepositPaymentForm({ open, po, depositInfo, paidUsd, nex
             <div className="space-y-1.5">
               <Label>지급액 (USD) *</Label>
               <Input
-                type="number"
-                step="0.01"
-                value={amountUsd}
-                onChange={(e) => setAmountUsd(e.target.value)}
-                placeholder={remainingUsd.toFixed(2)}
+                inputMode="decimal"
+                value={amountUsdDisplay}
+                className="text-right font-mono"
+                placeholder={remainingUsd.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/,/g, '').replace(/[^0-9.]/g, '');
+                  const parts = raw.split('.');
+                  const clamped = parts.length > 1 ? parts[0] + '.' + parts[1].slice(0, 2) : raw;
+                  const [intStr, decStr] = clamped.split('.');
+                  const intFormatted = intStr ? Number(intStr).toLocaleString('ko-KR') : '';
+                  const display = decStr !== undefined ? intFormatted + '.' + decStr : intFormatted;
+                  setAmountUsdDisplay(display);
+                  setAmountUsd(clamped);
+                }}
+                onFocus={() => setAmountUsdDisplay(amountUsdDisplay.replace(/,/g, ''))}
+                onBlur={() => {
+                  const num = parseFloat(amountUsdDisplay.replace(/,/g, ''));
+                  if (!isNaN(num) && num > 0) {
+                    setAmountUsdDisplay(num.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                    setAmountUsd(String(num));
+                  }
+                }}
               />
             </div>
             <div className="space-y-1.5">
               <Label>환율 (USD→KRW)</Label>
               <Input
                 inputMode="decimal"
-                placeholder="예: 1450.30"
-                value={exchangeRate}
-                onChange={(e) => setExchangeRate(e.target.value.replace(/[^0-9.]/g, ''))}
+                placeholder="0.00"
+                value={exchangeRateDisplay}
+                className="text-right font-mono"
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/,/g, '').replace(/[^0-9.]/g, '');
+                  const parts = raw.split('.');
+                  const clamped = parts.length > 1 ? parts[0] + '.' + parts[1].slice(0, 2) : raw;
+                  const [intStr, decStr] = clamped.split('.');
+                  const intFormatted = intStr ? Number(intStr).toLocaleString('ko-KR') : '';
+                  const display = decStr !== undefined ? intFormatted + '.' + decStr : intFormatted;
+                  setExchangeRateDisplay(display);
+                  setExchangeRate(clamped);
+                }}
+                onFocus={() => setExchangeRateDisplay(exchangeRateDisplay.replace(/,/g, ''))}
+                onBlur={() => {
+                  const num = parseFloat(exchangeRateDisplay.replace(/,/g, ''));
+                  if (!isNaN(num) && num > 0) {
+                    setExchangeRateDisplay(num.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                    setExchangeRate(String(num));
+                  }
+                }}
               />
             </div>
           </div>
@@ -186,10 +229,16 @@ export default function DepositPaymentForm({ open, po, depositInfo, paidUsd, nex
             <div className="space-y-1.5">
               <Label>원화 (KRW)</Label>
               <Input
-                type="number"
-                value={amountKrw}
-                onChange={(e) => setAmountKrw(e.target.value)}
+                inputMode="numeric"
+                value={amountKrwDisplay}
+                className="text-right font-mono"
                 placeholder="환율 입력 시 자동계산"
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^0-9]/g, '');
+                  const num = raw ? parseInt(raw, 10) : undefined;
+                  setAmountKrwDisplay(num !== undefined ? num.toLocaleString('ko-KR') : '');
+                  setAmountKrw(num !== undefined ? String(num) : '');
+                }}
               />
             </div>
             <div className="space-y-1.5">

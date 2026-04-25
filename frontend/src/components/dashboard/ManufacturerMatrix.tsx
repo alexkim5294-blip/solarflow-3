@@ -12,6 +12,7 @@
  *   - MW·회전율만 노출 (금액 없음) → 모든 strategic 역할에서 표시 가능
  */
 import { useMemo, useState } from 'react';
+import { shortMfgName } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import type { InventoryItem } from '@/types/inventory';
@@ -123,7 +124,7 @@ export default function ManufacturerMatrix({ inventory, matrix }: Props) {
                   <tr><td colSpan={mfrView.wps.length + 2} className="py-6 text-center text-muted-foreground">데이터 없음</td></tr>
                 ) : mfrView.rows.map(([mid, row]) => (
                   <tr key={mid} className="border-b last:border-b-0 hover:bg-muted/30">
-                    <td className="py-2 pr-3 font-medium">{row.name}</td>
+                    <td className="py-2 pr-3 font-medium">{shortMfgName(row.name)}</td>
                     {mfrView.wps.map((wp) => {
                       const cell = row.byWp.get(wp);
                       if (!cell || cell.inventory_kw === 0) {

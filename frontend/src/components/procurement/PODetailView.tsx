@@ -3,12 +3,13 @@ import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { cn, formatDate } from '@/lib/utils';
+import { cn, formatDate, shortMfgName } from '@/lib/utils';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import POForm from './POForm';
 import POLineTable from './POLineTable';
 import POLineForm from './POLineForm';
 import TTForm from './TTForm';
+import LCForm from './LCForm';
 import ConfirmDialog from '@/components/common/ConfirmDialog';
 import LinkedMemoWidget from '@/components/memo/LinkedMemoWidget';
 import POInboundProgress from './POInboundProgress';
@@ -46,9 +47,12 @@ function LCSubTable({ items }: { items: LCRecord[] }) {
           </tr>
         </thead>
         <tbody>
-          {items.map((lc) => (
+          {items.map((lc, idx) => (
             <tr key={lc.lc_id} className="border-t hover:bg-muted/10">
-              <td className="px-3 py-2 font-mono font-medium">{lc.lc_number || '—'}</td>
+              <td className="px-3 py-2 font-mono font-medium">
+                <span className="text-[10px] font-normal text-muted-foreground mr-1">#{idx + 1}</span>
+                {lc.lc_number || '—'}
+              </td>
               <td className="px-3 py-2 text-muted-foreground">{lc.bank_name ?? '—'}</td>
               <td className="px-3 py-2 text-muted-foreground">{formatDate(lc.open_date ?? '')}</td>
               <td className="px-3 py-2 text-right font-mono tabular-nums">{formatUSD(lc.amount_usd)}</td>
@@ -138,10 +142,18 @@ export default function PODetailView({ po: initialPo, onBack, onReload, allPos =
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const { data: lines, loading: linesLoading, reload: reloadLines } = usePOLines(po.po_id);
-  const { data: lcs, loading: lcsLoading } = useLCList({ po_id: po.po_id });
+  const { data: lcs, loading: lcsLoading, reload: reloadLcs } = useLCList({ po_id: po.po_id });
   const { data: tts, loading: ttsLoading, reload: reloadTTs } = useTTList({ po_id: po.po_id });
 
   const [ttFormOpen, setTtFormOpen] = useState(false);
+  const [lcFormOpen, setLcFormOpen] = useState(false);
+
+  const handleCreateLC = async (d: Record<string, unknown>) => {
+    await fetchWithAuth('/api/v1/lcs', { method: 'POST', body: JSON.stringify(d) });
+    reloadLcs();
+    onReload();
+  };
+
   const handleCreateTT = async (d: Record<string, unknown>) => {
     await fetchWithAuth('/api/v1/tts', { method: 'POST', body: JSON.stringify({ ...d, po_id: po.po_id }) });
     reloadTTs();
@@ -289,6 +301,9 @@ export default function PODetailView({ po: initialPo, onBack, onReload, allPos =
           onClick={() => { setDeleteError(''); setDeleteOpen(true); }}>
           <Trash2 className="mr-1 h-3.5 w-3.5" />삭제
         </Button>
+        <Button variant="outline" size="sm" onClick={() => setLcFormOpen(true)}>
+          LC 등록
+        </Button>
         {/* D-085: PO → 입고 데이터 전달 */}
         <Button size="sm" onClick={() => { window.location.href = `/inbound?po=${po.po_id}`; }}>
           입고 등록
@@ -299,7 +314,7 @@ export default function PODetailView({ po: initialPo, onBack, onReload, allPos =
       <Tabs defaultValue="summary">
         <TabsList>
           <TabsTrigger value="summary">종합정보</TabsTrigger>
-          <TabsTrigger value="lines">입고품목</TabsTrigger>
+          <TabsTrigger value="lines">발주품목</TabsTrigger>
           <TabsTrigger value="deposit">계약금 현황</TabsTrigger>
           <TabsTrigger value="lc">LC현황</TabsTrigger>
           <TabsTrigger value="inbound">입고현황</TabsTrigger>
@@ -310,7 +325,7 @@ export default function PODetailView({ po: initialPo, onBack, onReload, allPos =
             {/* 기본정보 필드 */}
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
               <Field label="계약유형" value={CONTRACT_TYPE_LABEL[po.contract_type]} />
-              <Field label="제조사" value={po.manufacturer_name} />
+              <Field label="제조사" value={shortMfgName(po.manufacturer_name)} />
               <Field label="계약일" value={formatDate(po.contract_date ?? '')} />
               <Field label="Incoterms" value={po.incoterms} />
               <Field label="결제조건" value={po.payment_terms} />
@@ -324,10 +339,12 @@ export default function PODetailView({ po: initialPo, onBack, onReload, allPos =
                     {lines.map((l) => {
                       const name = l.products?.product_name ?? l.product_name ?? '';
                       const spec = l.products?.spec_wp ?? l.spec_wp;
-                      const parts = [po.manufacturer_name, name, spec ? `${spec}Wp` : ''].filter(Boolean).join(' ');
+                      const parts = [shortMfgName(po.manufacturer_name), name, spec ? `${spec}Wp` : ''].filter(Boolean).join(' ');
+                      const isFree = l.payment_type === 'free';
                       return (
-                        <p key={l.po_line_id} className="text-sm">
+                        <p key={l.po_line_id} className="text-sm flex items-center gap-1.5">
                           {parts || '—'} × <span className="font-mono">{formatNumber(l.quantity)}EA</span>
+                          {isFree && <span className="rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-green-100 text-green-700">무상</span>}
                         </p>
                       );
                     })}
@@ -515,7 +532,14 @@ export default function PODetailView({ po: initialPo, onBack, onReload, allPos =
             {ttsLoading ? <LoadingSpinner /> : <TTSubTable items={tts} poLines={lines} />}
           </div>
         </TabsContent>
-        <TabsContent value="lc">{lcsLoading ? <LoadingSpinner /> : <LCSubTable items={lcs} />}</TabsContent>
+        <TabsContent value="lc">
+          <div className="space-y-3">
+            <div className="flex justify-end">
+              <Button size="sm" onClick={() => setLcFormOpen(true)}><Plus className="mr-1 h-3.5 w-3.5" />LC 등록</Button>
+            </div>
+            {lcsLoading ? <LoadingSpinner /> : <LCSubTable items={lcs} />}
+          </div>
+        </TabsContent>
         <TabsContent value="inbound"><POInboundProgress poId={po.po_id} poLines={lines} /></TabsContent>
       </Tabs>
 
@@ -532,6 +556,7 @@ export default function PODetailView({ po: initialPo, onBack, onReload, allPos =
       />
       <POLineForm open={lineFormOpen} onOpenChange={setLineFormOpen} onSubmit={editLine ? handleUpdateLine : handleCreateLine} editData={editLine} poId={po.po_id} />
       <TTForm open={ttFormOpen} onOpenChange={setTtFormOpen} onSubmit={handleCreateTT} editData={null} defaultPoId={po.po_id} />
+      <LCForm open={lcFormOpen} onOpenChange={setLcFormOpen} onSubmit={handleCreateLC} editData={null} defaultPoId={po.po_id} />
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
-import { formatDate, formatNumber } from '@/lib/utils';
+import { formatDate, formatNumber, shortMfgName } from '@/lib/utils';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import ConfirmDialog from '@/components/common/ConfirmDialog';
 import InboundStatusBadge from './InboundStatusBadge';
@@ -129,7 +129,7 @@ export default function BLDetailView({ blId, onBack }: Props) {
             <CardContent className="pb-4">
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
                 <Field label="입고 구분" value={INBOUND_TYPE_LABEL[bl.inbound_type]} />
-                <Field label="공급사" value={manufacturerName || bl.manufacturer_name || '—'} />
+                <Field label="공급사" value={shortMfgName(manufacturerName || bl.manufacturer_name)} />
                 {/* R3-보완2: PO/LC 클릭 시 상세 이동 */}
                 {bl.po_id && (
                   <div>

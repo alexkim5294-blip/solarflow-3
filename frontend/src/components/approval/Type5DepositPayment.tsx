@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { useType5 } from '@/hooks/useApproval';
 import { usePOList } from '@/hooks/useProcurement';
 import { generateType5 } from '@/lib/approvalTemplates';
+import { shortMfgName } from '@/lib/utils';
 
 interface Props { onGenerate: (text: string) => void }
 
@@ -33,7 +34,7 @@ export default function Type5DepositPayment({ onGenerate }: Props) {
           <option value="">PO 선택...</option>
           {pos.map((po) => (
             <option key={po.po_id} value={po.po_id}>
-              {po.po_number ?? po.po_id.slice(0, 8)} — {po.manufacturer_name} — {po.status}
+              {po.po_number ?? po.po_id.slice(0, 8)} — {shortMfgName(po.manufacturer_name)} — {po.status}
             </option>
           ))}
         </select>

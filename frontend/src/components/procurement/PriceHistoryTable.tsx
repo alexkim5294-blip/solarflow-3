@@ -1,7 +1,7 @@
 import { ArrowUp, ArrowDown, Minus, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { formatDate } from '@/lib/utils';
+import { formatDate, shortMfgName } from '@/lib/utils';
 import EmptyState from '@/components/common/EmptyState';
 import type { PriceHistory } from '@/types/procurement';
 
@@ -27,7 +27,7 @@ export default function PriceHistoryTable({ items, onEdit, onNew }: Props) {
         <TableBody>
           {items.map((ph) => (
             <TableRow key={ph.price_history_id}>
-              <TableCell>{ph.manufacturer_name ?? '—'}</TableCell>
+              <TableCell>{shortMfgName(ph.manufacturer_name)}</TableCell>
               <TableCell>{ph.product_name ? `${ph.product_name}${ph.spec_wp ? ` (${ph.spec_wp}Wp)` : ''}` : '—'}</TableCell>
               <TableCell>{formatDate(ph.change_date)}</TableCell>
               <TableCell className="text-right">{ph.previous_price != null ? `$${ph.previous_price.toFixed(4)}` : '—'}</TableCell>

@@ -19,7 +19,7 @@ export default function POLineTable({ items, onEdit, manufacturerName }: Props) 
       <Table className="text-xs">
         <TableHeader><TableRow>
           <TableHead>제조사</TableHead><TableHead>품번</TableHead><TableHead>품명</TableHead><TableHead className="text-right">규격</TableHead>
-          <TableHead className="text-right">수량</TableHead><TableHead className="text-right">단가(¢/Wp)</TableHead>
+          <TableHead className="text-right">수량</TableHead><TableHead>유/무상</TableHead><TableHead className="text-right">단가(¢/Wp)</TableHead>
           <TableHead className="text-right">총액(USD)</TableHead><TableHead className="w-10"></TableHead>
         </TableRow></TableHeader>
         <TableBody>
@@ -36,9 +36,18 @@ export default function POLineTable({ items, onEdit, manufacturerName }: Props) 
                 <TableCell>{pName(l)}</TableCell>
                 <TableCell className="text-right">{spec ? formatWp(spec) : '—'}</TableCell>
                 <TableCell className="text-right">{formatNumber(l.quantity)}</TableCell>
+                <TableCell>
+                  {l.payment_type === 'free'
+                    ? <span className="rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-green-100 text-green-700">무상</span>
+                    : <span className="text-[10px] text-muted-foreground">유상</span>}
+                </TableCell>
                 <TableCell className="text-right">{cents != null ? `${cents.toFixed(2)}¢` : '—'}</TableCell>
                 <TableCell className="text-right font-medium">{l.total_amount_usd != null ? formatUSD(l.total_amount_usd) : '—'}</TableCell>
-                <TableCell><Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onEdit(l)}><Pencil className="h-3 w-3" /></Button></TableCell>
+                <TableCell>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onEdit(l)} disabled={l.payment_type === 'free'}>
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                </TableCell>
               </TableRow>
             );
           })}

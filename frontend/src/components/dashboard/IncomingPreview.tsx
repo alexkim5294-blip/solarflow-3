@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { formatDate } from '@/lib/utils';
+import { formatDate, shortMfgName } from '@/lib/utils';
 import { BL_STATUS_LABEL, type BLStatus } from '@/types/inbound';
 import type { BLShipment } from '@/types/inbound';
 
@@ -45,7 +45,7 @@ export default function IncomingPreview({ items }: Props) {
               {items.map((bl) => (
                 <TableRow key={bl.bl_id}>
                   <TableCell className="text-xs font-medium">{bl.bl_number}</TableCell>
-                  <TableCell className="text-xs">{bl.manufacturer_name || '—'}</TableCell>
+                  <TableCell className="text-xs">{shortMfgName(bl.manufacturer_name)}</TableCell>
                   <TableCell className="text-xs">{bl.eta ? formatDate(bl.eta) : '—'}</TableCell>
                   <TableCell>
                     <Badge className={`text-[10px] ${STATUS_COLOR[bl.status] || 'bg-gray-100 text-gray-700'}`}>

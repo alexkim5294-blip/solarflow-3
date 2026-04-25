@@ -53,6 +53,7 @@ export default function ProcurementPage() {
   if (poTypeFilter) poFilters.contract_type = poTypeFilter;
   const { data: pos, loading: poLoading, reload: reloadPO } = usePOList(poFilters);
 
+  const [lcAggVersion, setLcAggVersion] = useState(0);
   const [lcStatusFilter, setLcStatusFilter] = useState('');
   const [lcBankFilter, setLcBankFilter] = useState('');
   const [lcMfgFilter, setLcMfgFilter] = useState('');
@@ -121,7 +122,7 @@ export default function ProcurementPage() {
   // ESC 키로 패널 닫기
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape' && selectedPO) { setSelectedPO(null); reloadPO(); reloadPoList(); }
+      if (e.key === 'Escape' && selectedPO) { setSelectedPO(null); reloadPO(); reloadPoList(); setLcAggVersion(v => v + 1); }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -271,7 +272,7 @@ export default function ProcurementPage() {
     reloadBL();
   };
 
-  const handleCreateLC = async (d: Record<string, unknown>) => { await fetchWithAuth('/api/v1/lcs', { method: 'POST', body: JSON.stringify(d) }); reloadLC(); };
+  const handleCreateLC = async (d: Record<string, unknown>) => { await fetchWithAuth('/api/v1/lcs', { method: 'POST', body: JSON.stringify(d) }); reloadLC(); setLcAggVersion(v => v + 1); };
   const handleUpdateLC = async (d: Record<string, unknown>) => { if (!editLC) return; await fetchWithAuth(`/api/v1/lcs/${editLC.lc_id}`, { method: 'PUT', body: JSON.stringify(d) }); setEditLC(null); reloadLC(); };
   const handleSettleLC = async (lc: import('@/types/procurement').LCRecord, repaymentDate: string) => {
     await fetchWithAuth(`/api/v1/lcs/${lc.lc_id}`, { method: 'PUT', body: JSON.stringify({ repaid: true, repayment_date: repaymentDate, status: 'settled' }) });
@@ -432,6 +433,7 @@ export default function ProcurementPage() {
               onDelete={handleDeletePO}
               onDeleteLC={handleDeleteLC}
               onSelectBL={setSelectedBL}
+              aggVersion={lcAggVersion}
             />
           )}
           <POForm open={poFormOpen} onOpenChange={setPoFormOpen} onSubmit={handleCreatePO} />
@@ -560,7 +562,7 @@ export default function ProcurementPage() {
       {selectedPO && (
         <div
           className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px] transition-opacity"
-          onClick={() => { setSelectedPO(null); reloadPO(); reloadPoList(); }}
+          onClick={() => { setSelectedPO(null); reloadPO(); reloadPoList(); setLcAggVersion(v => v + 1); }}
         />
       )}
 
@@ -611,7 +613,7 @@ export default function ProcurementPage() {
               </button>
             ))}
             <button
-              onClick={() => { setSelectedPO(null); reloadPO(); reloadPoList(); }}
+              onClick={() => { setSelectedPO(null); reloadPO(); reloadPoList(); setLcAggVersion(v => v + 1); }}
               className="ml-2 rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
               title="닫기 (ESC)"
             >
@@ -627,8 +629,8 @@ export default function ProcurementPage() {
           {selectedPO && (
             <PODetailView
               po={selectedPO}
-              onBack={() => { setSelectedPO(null); reloadPO(); reloadPoList(); }}
-              onReload={() => { reloadPO(); reloadPoList(); }}
+              onBack={() => { setSelectedPO(null); reloadPO(); reloadPoList(); setLcAggVersion(v => v + 1); }}
+              onReload={() => { reloadPO(); reloadPoList(); setLcAggVersion(v => v + 1); }}
               allPos={pos}
             />
           )}

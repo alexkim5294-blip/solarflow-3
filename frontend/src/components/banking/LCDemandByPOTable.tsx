@@ -2,7 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { formatUSD, formatDate } from '@/lib/utils';
+import { formatUSD, formatDate, shortMfgName } from '@/lib/utils';
 import type { LCDemandByPO } from '@/types/banking';
 
 interface Props {
@@ -41,7 +41,7 @@ export default function LCDemandByPOTable({ items }: Props) {
         {items.map((d) => (
           <TableRow key={d.po_id}>
             <TableCell className="text-sm font-medium">{d.po_number || d.po_id.slice(0, 8)}</TableCell>
-            <TableCell className="text-sm">{d.manufacturer_name || '—'}</TableCell>
+            <TableCell className="text-sm">{shortMfgName(d.manufacturer_name)}</TableCell>
             <TableCell className="text-sm text-right">{formatUSD(d.po_total_usd)}</TableCell>
             <TableCell className="text-sm text-right">{formatUSD(d.tt_paid_usd)}</TableCell>
             <TableCell className="text-sm text-right">{formatUSD(d.lc_opened_usd)}</TableCell>

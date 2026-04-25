@@ -46,6 +46,7 @@ export interface BLShipment {
   incoterms?: string;
   counterpart_company_id?: string;
   declaration_number?: string;
+  cif_amount_krw?: number;  // 면장 CIF 원화금액 (부가세·무상분 과세 제외)
 }
 
 export interface BLLineItem {

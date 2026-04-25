@@ -28,6 +28,7 @@ type BLShipment struct {
 	Incoterms             *string  `json:"incoterms"`
 	CounterpartCompanyID  *string  `json:"counterpart_company_id"`
 	DeclarationNumber     *string  `json:"declaration_number"`
+	CIFAmountKRW          *int64   `json:"cif_amount_krw,omitempty"`  // 면장 CIF 원화금액 (부가세·무상분 과세 제외)
 }
 
 // BLWithRelations — 법인/제조사/창고 정보를 포함한 B/L 목록 조회 결과
@@ -130,6 +131,7 @@ type CreateBLRequest struct {
 	Incoterms             *string  `json:"incoterms"`
 	CounterpartCompanyID  *string  `json:"counterpart_company_id"`
 	DeclarationNumber     *string  `json:"declaration_number"`
+	CIFAmountKRW          *int64   `json:"cif_amount_krw,omitempty"`
 }
 
 // Validate — B/L 등록 요청의 입력값을 검증
@@ -197,6 +199,7 @@ type UpdateBLRequest struct {
 	Incoterms             *string  `json:"incoterms,omitempty"`
 	CounterpartCompanyID  *string  `json:"counterpart_company_id,omitempty"`
 	DeclarationNumber     *string  `json:"declaration_number,omitempty"`
+	CIFAmountKRW          *int64   `json:"cif_amount_krw,omitempty"`
 }
 
 // Validate — B/L 수정 요청의 입력값을 검증

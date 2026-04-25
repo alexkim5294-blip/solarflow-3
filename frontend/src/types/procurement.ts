@@ -10,6 +10,7 @@ export interface PurchaseOrder {
   company_name?: string;
   manufacturer_id: string;
   manufacturer_name?: string;
+  first_spec_wp?: number;  // purchase_orders_ext 뷰: 첫 번째 유상 라인 spec_wp (드롭다운용)
   contract_type: ContractType;
   contract_date?: string;
   incoterms?: string;
@@ -33,6 +34,8 @@ export interface POLineItem {
   quantity: number;
   unit_price_usd?: number;
   total_amount_usd?: number;
+  item_type?: 'main' | 'spare';
+  payment_type?: 'paid' | 'free';
   memo?: string;
   // Go API가 nested로 반환 (POLineWithProduct)
   products?: { product_code?: string; product_name?: string; spec_wp?: number };

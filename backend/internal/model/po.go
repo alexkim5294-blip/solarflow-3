@@ -9,6 +9,7 @@ type PurchaseOrder struct {
 	ManufacturerID      string   `json:"manufacturer_id"`
 	ManufacturerName    *string  `json:"manufacturer_name,omitempty"`  // purchase_orders_ext 뷰에서 제공
 	ManufacturerNameEN  *string  `json:"manufacturer_name_en,omitempty"`
+	FirstSpecWp         *int     `json:"first_spec_wp,omitempty"`      // 첫 번째 유상 라인 spec_wp (드롭다운 표시용)
 	Currency            *string  `json:"currency,omitempty"` // D-087: PO 자동채움용 (DB에 없으면 빈 값)
 	ContractType        string   `json:"contract_type"`
 	ContractDate        *string  `json:"contract_date"`

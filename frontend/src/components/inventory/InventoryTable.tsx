@@ -21,7 +21,7 @@ function LongTermBadge({ status }: { status: string }) {
   return null;
 }
 
-/** 재고 수치 셀: 메인값 + EA + 차감내역 */
+/** 재고 수치 셀: 메인값 + EA + 차감내역 + 소계 */
 function MetricCell({
   kw, specWp, deductions, mainClassName,
 }: {
@@ -31,7 +31,9 @@ function MetricCell({
   mainClassName?: string;
 }) {
   const ea = kwToEa(kw, specWp);
-  const hasDeductions = deductions?.some((d) => d.kw > 0);
+  const activeDeductions = deductions?.filter((d) => d.kw > 0) ?? [];
+  const netKw = kw - activeDeductions.reduce((s, d) => s + d.kw, 0);
+  const hasDeductions = activeDeductions.length > 0;
   return (
     <td className="p-3 text-right align-top min-w-[130px]">
       <div className={`font-semibold tabular-nums ${mainClassName ?? ''}`}>{fmw(kw)}</div>
@@ -40,19 +42,22 @@ function MetricCell({
       </div>
       {hasDeductions && (
         <div className="mt-1 space-y-0.5">
-          {deductions!.filter((d) => d.kw > 0).map((d) => (
+          {activeDeductions.map((d) => (
             <div key={d.label} className="text-[10px] text-muted-foreground">
               <span className="text-red-400">− {d.label}</span>{' '}
               <span className="tabular-nums">{fmw(d.kw)}</span>
             </div>
           ))}
+          <div className="text-[10px] border-t border-border/60 pt-0.5 mt-0.5 font-medium tabular-nums text-foreground">
+            소계 {fmw(netKw)}
+          </div>
         </div>
       )}
     </td>
   );
 }
 
-/** 합계 행 수치 셀 (EA 없음, breakdown만) */
+/** 합계 행 수치 셀 (EA 없음, breakdown + 소계) */
 function TotalCell({
   kw, deductions, mainClassName,
 }: {
@@ -60,18 +65,23 @@ function TotalCell({
   deductions?: { label: string; kw: number }[];
   mainClassName?: string;
 }) {
-  const hasDeductions = deductions?.some((d) => d.kw > 0);
+  const activeDeductions = deductions?.filter((d) => d.kw > 0) ?? [];
+  const netKw = kw - activeDeductions.reduce((s, d) => s + d.kw, 0);
+  const hasDeductions = activeDeductions.length > 0;
   return (
     <td className="p-3 text-right align-top">
       <div className={`font-bold tabular-nums ${mainClassName ?? ''}`}>{fmw(kw)}</div>
       {hasDeductions && (
         <div className="mt-1 space-y-0.5">
-          {deductions!.filter((d) => d.kw > 0).map((d) => (
+          {activeDeductions.map((d) => (
             <div key={d.label} className="text-[10px] text-muted-foreground font-normal">
               <span className="text-red-400">− {d.label}</span>{' '}
               <span className="tabular-nums">{fmw(d.kw)}</span>
             </div>
           ))}
+          <div className="text-[10px] border-t border-border/60 pt-0.5 mt-0.5 font-semibold tabular-nums text-foreground">
+            소계 {fmw(netKw)}
+          </div>
         </div>
       )}
     </td>

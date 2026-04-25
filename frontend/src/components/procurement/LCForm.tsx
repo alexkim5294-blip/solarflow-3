@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -17,6 +17,17 @@ import type { Bank, Company, Product } from '@/types/masters';
 
 function Txt({ text, placeholder = '선택' }: { text: string; placeholder?: string }) {
   return <span className={`flex flex-1 text-left truncate ${text ? '' : 'text-muted-foreground'}`} data-slot="select-value">{text || placeholder}</span>;
+}
+
+function InfoCell({ label, children, mono = false, strong = false }: { label: string; children: ReactNode; mono?: boolean; strong?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[11px] leading-4 text-muted-foreground">{label}</div>
+      <div className={`mt-0.5 min-h-5 truncate leading-5 ${mono ? 'font-mono tabular-nums' : ''} ${strong ? 'font-semibold' : 'font-medium'}`}>
+        {children}
+      </div>
+    </div>
+  );
 }
 
 const schema = z.object({
@@ -88,9 +99,13 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
   // 선택한 개설법인의 은행 목록
   const watchedCompanyId = watch('company_id');
   useEffect(() => {
-    const cid = watchedCompanyId || selectedCompanyId;
+    const cid = (watchedCompanyId && watchedCompanyId !== 'all')
+      ? watchedCompanyId
+      : (selectedCompanyId && selectedCompanyId !== 'all' ? selectedCompanyId : '');
     if (cid) {
       fetchWithAuth<Bank[]>(`/api/v1/banks?company_id=${cid}`).then((list) => setBanks(list.filter((b) => b.is_active))).catch(() => setBanks([]));
+    } else {
+      setBanks([]);
     }
   }, [watchedCompanyId, selectedCompanyId]);
 
@@ -98,10 +113,11 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
   const watchedPoId = watch('po_id');
   useEffect(() => {
     if (!watchedPoId) { setPoLines([]); setPoTts([]); setPoLcs([]); return; }
-    // LC탭 직접 등록 시 PO 선택 → 개설법인 자동 완성 (법인↔PO 불일치 방지)
-    if (!defaultPoId && !editData) {
+    // 새 LC 등록 시 PO 선택/고정 경로 모두 PO 법인을 기본값으로 맞춘다.
+    if (!editData) {
       const po = pos.find((p) => p.po_id === watchedPoId);
-      if (po?.company_id) {
+      const currentCompanyId = watch('company_id');
+      if (po?.company_id && currentCompanyId !== po.company_id) {
         setValue('company_id', po.company_id, { shouldDirty: true });
         setValue('bank_id', ''); // 법인 변경 시 은행 초기화
       }
@@ -109,7 +125,7 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
     fetchWithAuth<POLineItem[]>(`/api/v1/pos/${watchedPoId}/lines`).then(setPoLines).catch(() => setPoLines([]));
     fetchWithAuth<TTRemittance[]>(`/api/v1/tts?po_id=${watchedPoId}`).then(setPoTts).catch(() => setPoTts([]));
     fetchWithAuth<LCRecord[]>(`/api/v1/lcs?po_id=${watchedPoId}`).then(setPoLcs).catch(() => setPoLcs([]));
-  }, [watchedPoId, pos, defaultPoId, editData, setValue]);
+  }, [watchedPoId, pos, editData, setValue, watch]);
 
   useEffect(() => {
     if (open) {
@@ -121,7 +137,8 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
         setTargetQtyDisplay(editData.target_qty ? Math.round(editData.target_qty).toLocaleString('ko-KR') : '');
         setTargetMwDisplay(editData.target_mw != null ? editData.target_mw.toString() : '');
       } else {
-        reset({ lc_number: '', po_id: defaultPoId ?? '', company_id: selectedCompanyId ?? '', bank_id: '', open_date: '', amount_usd: '' as unknown as number, target_qty: '', target_mw: '', usance_days: 90, usance_type: 'buyers', maturity_date: '', status: 'opened', memo: '' });
+        const initialCompanyId = selectedCompanyId && selectedCompanyId !== 'all' ? selectedCompanyId : '';
+        reset({ lc_number: '', po_id: defaultPoId ?? '', company_id: initialCompanyId, bank_id: '', open_date: '', amount_usd: '' as unknown as number, target_qty: '', target_mw: '', usance_days: 90, usance_type: 'buyers', maturity_date: '', status: 'opened', memo: '' });
         setAmountUsdDisplay('');
         setTargetQtyDisplay('');
         setTargetMwDisplay('');
@@ -278,19 +295,19 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
             const thisLcMw = parseFloat(String(watch('target_mw') ?? 0)) || 0;
             const remainMw = Math.max(0, paidTotalMw - lcOpenedMw - thisLcMw);
             return (
-              <div className="rounded-md border p-3 bg-muted/30 text-xs space-y-2">
-                <div className="grid grid-cols-5 gap-2">
-                  <div><div className="text-muted-foreground">제조사/규격</div><div className="font-medium">{poMfgSpecLabel(po?.manufacturer_name, poLines, products)}</div></div>
-                  <div><div className="text-muted-foreground">품명</div><div className="font-medium truncate">{summary.productName}</div></div>
-                  <div><div className="text-muted-foreground">품번</div><div className="font-medium truncate">{summary.productCodeWithCount}</div></div>
-                  <div><div className="text-muted-foreground">단가(¢/Wp)</div><div className="font-mono font-medium">{unitPriceCpW ?? '—'}</div></div>
-                  <div><div className="text-muted-foreground">발주 잔량</div><div className="font-mono font-semibold">{remainMw.toFixed(2)} MW</div></div>
+              <div className="rounded-md border bg-muted/30 p-3 text-xs">
+                <div className="grid grid-cols-5 gap-x-4 gap-y-3">
+                  <InfoCell label="제조사/규격">{poMfgSpecLabel(po?.manufacturer_name, poLines, products)}</InfoCell>
+                  <InfoCell label="품명">{summary.productName}</InfoCell>
+                  <InfoCell label="품번">{summary.productCodeWithCount}</InfoCell>
+                  <InfoCell label="단가(¢/Wp)" mono>{unitPriceCpW ?? '—'}</InfoCell>
+                  <InfoCell label="발주 잔량" mono strong>{remainMw.toFixed(2)} MW</InfoCell>
                 </div>
-                <div className="grid grid-cols-4 gap-2 pt-2 border-t">
-                  <div><div className="text-muted-foreground">PO 계약총액</div><div className="font-mono">{formatUSD(poTotalUsd)}</div></div>
-                  <div><div className="text-muted-foreground">계약금 기납부</div><div className="font-mono">{formatUSD(ttPaid)}</div></div>
-                  <div><div className="text-muted-foreground">LC 기개설</div><div className="font-mono">{formatUSD(lcOpened)}</div></div>
-                  <div><div className="text-muted-foreground">미개설 잔액</div><div className="font-mono font-semibold">{formatUSD(remain)}</div></div>
+                <div className="mt-3 grid grid-cols-4 gap-x-4 gap-y-3 border-t pt-3">
+                  <InfoCell label="PO 계약총액" mono>{formatUSD(poTotalUsd)}</InfoCell>
+                  <InfoCell label="계약금 기납부" mono>{formatUSD(ttPaid)}</InfoCell>
+                  <InfoCell label="LC 기개설" mono>{formatUSD(lcOpened)}</InfoCell>
+                  <InfoCell label="미개설 잔액" mono strong>{formatUSD(remain)}</InfoCell>
                 </div>
               </div>
             );

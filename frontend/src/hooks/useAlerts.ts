@@ -105,9 +105,9 @@ export function useAlerts(companyId: string | null) {
 
     // 3,4: 미수금 주의/연체
     if (custResult.status === 'fulfilled') {
-      const custData = custResult.value;
-      const warn30 = custData.customers.filter((c) => c.max_days_overdue > 30 && c.max_days_overdue <= 60).length;
-      const crit60 = custData.customers.filter((c) => c.max_days_overdue > 60).length;
+      const customers = custResult.value?.customers ?? [];
+      const warn30 = customers.filter((c) => c.max_days_overdue > 30 && c.max_days_overdue <= 60).length;
+      const crit60 = customers.filter((c) => c.max_days_overdue > 60).length;
       if (crit60 > 0) items.push({ id: String(++id), type: 'overdue_critical', severity: 'critical', icon: 'AlertCircle', title: '미수금 연체', description: `60일 초과 거래처 ${crit60}곳`, count: crit60, link: '/orders?tab=matching' });
       if (warn30 > 0) items.push({ id: String(++id), type: 'overdue_warning', severity: 'warning', icon: 'AlertTriangle', title: '미수금 주의', description: `30일 초과 거래처 ${warn30}곳`, count: warn30, link: '/orders?tab=matching' });
     }

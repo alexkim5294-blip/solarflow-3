@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { useAppStore } from '@/stores/appStore';
 import { fetchWithAuth } from '@/lib/api';
-import { moduleLabel, shortMfgName } from '@/lib/utils';
+import { formatUSD, moduleLabel, shortMfgName } from '@/lib/utils';
 import type { BLShipment, BLLineItem } from '@/types/inbound';
 import type { Company, Manufacturer, Product, Warehouse } from '@/types/masters';
 
@@ -64,6 +64,22 @@ const emptyLine = (): LineItem => ({
   product_id: '', quantity: '', item_type: 'main', payment_type: 'paid',
   unit_price: '', manualInvoice: false, invoiceOverride: '',
 });
+
+function formatDecimalPlain(value: number, minDigits = 2, maxDigits = 4): string {
+  return value.toLocaleString('en-US', {
+    useGrouping: false,
+    minimumFractionDigits: minDigits,
+    maximumFractionDigits: maxDigits,
+  });
+}
+
+function formatCapacityFromKw(kw: number | null): string {
+  if (kw == null || !Number.isFinite(kw)) return '-';
+  if (Math.abs(kw) >= 1000) {
+    return `${(kw / 1000).toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MW`;
+  }
+  return `${kw.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kW`;
+}
 
 /* ── 해외직수입 결제조건 — 계약금 % + 잔금 기간 (30/45/60/90/120/180) ── */
 const IMPORT_BALANCE_DAYS = ['30', '45', '60', '90', '120', '180'] as const;
@@ -291,6 +307,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
   const [selLCId, setSelLCId] = useState<string>('');
   // 면장 CIF 원화금액 (부가세·무상분 과세 제외) — 입력값 표시용 (콤마 포함 문자열)
   const [cifAmountKrwDisplay, setCifAmountKrwDisplay] = useState<string>('');
+  const [cifAmountKrwManual, setCifAmountKrwManual] = useState<boolean>(false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { register, reset, setValue, getValues, watch, formState: { isSubmitting, isDirty } } = useForm<FormData>({
@@ -524,6 +541,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
       setExchangeRateLive(d.exchange_rate != null ? String(d.exchange_rate) : '');
       setExchangeRateDisplay(d.exchange_rate != null ? d.exchange_rate.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
       setCifAmountKrwDisplay(d.cif_amount_krw != null ? d.cif_amount_krw.toLocaleString('ko-KR') : '');
+      setCifAmountKrwManual(d.cif_amount_krw != null);
       // 초기 스냅샷 — 변경사항 비교 기준
       const initImportPT = d.inbound_type === 'import' ? parseImportPT(d.payment_terms ?? '') : defaultImportPT();
       const initDomesticPT = d.inbound_type === 'domestic' ? parseDomesticPT(d.payment_terms ?? '') : defaultDomesticPT();
@@ -574,7 +592,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
       setSelType(''); setSelCompanyId(cid); setSelMfgId(''); setSelWhId('');
       setCounterpartId(''); setAutoNumber(''); setImportPT(defaultImportPT()); setDomesticPT(defaultDomesticPT());
       setBafCaf(false); setDeliveryDate(''); setExchangeRateLive(''); setExchangeRateDisplay(''); setSelPOId('');
-      setAutofilled(false); setPoRemaining(null); setPoLineRows([]); setCifAmountKrwDisplay('');
+      setAutofilled(false); setPoRemaining(null); setPoLineRows([]); setCifAmountKrwDisplay(''); setCifAmountKrwManual(false);
       reset({
         inbound_type: '', bl_number: '', manufacturer_id: '',
         exchange_rate: '', etd: '', eta: '', actual_arrival: '',
@@ -609,12 +627,12 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
           ? ''  // 무상 라인은 단가 없음 — PO의 플레이스홀더 단가를 그대로 쓰지 않음
           : isImport
             ? (() => {
-                if (r.unit_price_usd_wp != null) return String(r.unit_price_usd_wp * 100); // $/Wp → ¢/Wp
+                if (r.unit_price_usd_wp != null) return formatDecimalPlain(r.unit_price_usd_wp * 100, 2, 4); // $/Wp → ¢/Wp
                 // $/EA → ¢/Wp 역산 (unit_price_usd_wp 미설정 구레코드 대응)
                 if (r.unit_price_usd != null) {
                   const prod = products.find(p => p.product_id === r.product_id);
                   if (prod?.spec_wp && prod.spec_wp > 0) {
-                    return String(parseFloat((r.unit_price_usd / prod.spec_wp * 100).toPrecision(8)));
+                    return formatDecimalPlain(r.unit_price_usd / prod.spec_wp * 100, 2, 4);
                   }
                 }
                 return '';
@@ -637,10 +655,10 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
     const p = products.find(x => x.product_id === pid);
     return p ? `${p.product_code} | ${p.product_name} | ${p.spec_wp}Wp` : '';
   };
-  const calcKw = (l: LineItem) => {
+  const calcCapacity = (l: LineItem): number | null => {
     const q = Number(l.quantity);
     const p = products.find(x => x.product_id === l.product_id);
-    return (!q || !p) ? '-' : ((q * p.spec_wp) / 1000).toFixed(2);
+    return (!q || !p) ? null : (q * p.spec_wp) / 1000;
   };
   // 인보이스 자동 계산: 수량 × 규격Wp × 단가($/Wp or ₩/Wp)
   const calcInvoice = (l: LineItem): number | null => {
@@ -841,6 +859,14 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
     : totalInvoiceBase;
   // 결제조건 % 계산의 기준: import=USD, domestic=KRW
   const totalForPT = isImport ? totalUSD : totalKRW;
+  const autoCifAmountKrw = isImport && exRateNum > 0 && totalUSD > 0
+    ? Math.round(totalUSD * exRateNum)
+    : 0;
+
+  useEffect(() => {
+    if (!isImport || cifAmountKrwManual) return;
+    setCifAmountKrwDisplay(autoCifAmountKrw > 0 ? autoCifAmountKrw.toLocaleString('ko-KR') : '');
+  }, [isImport, cifAmountKrwManual, autoCifAmountKrw]);
 
   /* ── 렌더 ── */
   const mfgName = manufacturers.find(m => m.manufacturer_id === selMfgId)?.name_kr ?? '';
@@ -859,7 +885,8 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
   // LC SelectTrigger 표시 텍스트: 선택 후에는 "진코솔라 640W | LC번호 | 상태"
   const lcItemLabel = (lc: typeof lcList[number]) => {
     const modPart = firstSpecWp > 0 ? `${moduleLabel(mfgName, firstSpecWp)} | ` : '';
-    return `${modPart}${lc.lc_number ?? lc.lc_id.slice(0, 8)} | ${lc.bank_name ?? '—'} | ${lc.amount_usd.toLocaleString()} USD | ${LC_STATUS_KR[lc.status] ?? lc.status}`;
+    const bankPart = lc.bank_name ? ` | ${lc.bank_name}` : '';
+    return `${modPart}${lc.lc_number ?? lc.lc_id.slice(0, 8)}${bankPart} | ${formatUSD(lc.amount_usd)} | ${LC_STATUS_KR[lc.status] ?? lc.status}`;
   };
 
   return (
@@ -1082,6 +1109,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
                         onChange={(e) => {
                           const raw = e.target.value.replace(/[^0-9]/g, '');
                           const num = raw ? parseInt(raw, 10) : NaN;
+                          setCifAmountKrwManual(true);
                           setCifAmountKrwDisplay(!isNaN(num) ? num.toLocaleString('ko-KR') : '');
                         }}
                         onFocus={() => setCifAmountKrwDisplay(prev => prev.replace(/,/g, ''))}
@@ -1102,12 +1130,13 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
                           return (
                             <p className="text-[10px] text-primary font-medium">
                               Wp 원화단가 = {krwWp.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 원/Wp
+                              {!cifAmountKrwManual ? ' · 자동계산' : ' · 수동수정'}
                             </p>
                           );
                         }
                         return (
                           <p className="text-[10px] text-muted-foreground">
-                            부가세 제외 · 무상분 과세 제외 · 원화단가 = CIF원화금액 ÷ 총유상Wp
+                            부가세 제외 · 무상분 과세 제외 · 환율 입력 시 자동계산 후 수정 가능
                           </p>
                         );
                       })()}
@@ -1186,7 +1215,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
                                     LC: {lc.lc_number ?? '—'}
                                   </span>
                                   <span className="text-muted-foreground shrink-0">
-                                    {LC_STATUS_KR[lc.status] ?? lc.status} · ${lc.amount_usd.toLocaleString()}
+                                    {LC_STATUS_KR[lc.status] ?? lc.status} · {formatUSD(lc.amount_usd)}
                                     {lcTargetMw > 0 && ` · ${lcTargetMw.toFixed(2)}MW`}
                                   </span>
                                   {lcTarget > 0 ? (
@@ -1213,7 +1242,6 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
                           const shippedMw = (row.shipped_qty * specWp) / 1_000_000;
                           const remainMw = (remainQty * specWp) / 1_000_000;
                           const inputQty = parseInt(row.thisShipmentQty || '0');
-                          const isOver = inputQty > remainQty;
                           return (
                             <tr key={i} className="border-t">
                               <td className="px-2 py-1.5">
@@ -1342,18 +1370,23 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
                             </span>
                             <div className="flex gap-1 items-center">
                               <Input
-                                className="h-9 text-xs flex-1 min-w-0"
+                                className="h-9 text-xs flex-1 min-w-0 text-right font-mono tabular-nums"
                                 inputMode={isImport ? 'decimal' : 'numeric'}
                                 value={line.unit_price}
                                 disabled={line.payment_type === 'free'}
-                                placeholder={line.payment_type === 'free' ? '—' : isImport ? (priceMode === 'cents' ? '예: ¢12.30 (=$0.123/Wp)' : '예: $0.1230/Wp') : '예: 200 (원/Wp)'}
+                                placeholder={line.payment_type === 'free' ? '—' : isImport ? (priceMode === 'cents' ? '12.40' : '0.1240') : '200'}
                                 onChange={e => {
                                   const v = e.target.value;
                                   if (isImport) {
-                                    if (v === '' || /^\d*\.?\d{0,6}$/.test(v)) updateLine(idx, 'unit_price', v);
+                                    if (v === '' || /^\d*\.?\d{0,4}$/.test(v)) updateLine(idx, 'unit_price', v);
                                   } else {
                                     if (v === '' || /^\d+$/.test(v)) updateLine(idx, 'unit_price', v);
                                   }
+                                }}
+                                onBlur={() => {
+                                  if (!isImport || !line.unit_price) return;
+                                  const num = parseFloat(line.unit_price);
+                                  if (!isNaN(num)) updateLine(idx, 'unit_price', formatDecimalPlain(num, 2, 4));
                                 }} />
                               {isImport && line.payment_type !== 'free' && (
                                 <Button type="button" variant="outline" size="sm"
@@ -1368,11 +1401,11 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
                             {isImport ? (
                               <div className="flex gap-1 items-center">
                                 {line.manualInvoice ? (
-                                  <Input className="h-9 text-xs flex-1 min-w-0" inputMode="decimal"
+                                  <Input className="h-9 text-xs flex-1 min-w-0 text-right font-mono tabular-nums" inputMode="decimal"
                                     value={line.invoiceOverride} placeholder="직접 입력"
                                     onChange={e => { const v = e.target.value; if (v === '' || /^\d*\.?\d{0,2}$/.test(v)) updateLine(idx, 'invoiceOverride', v); }} />
                                 ) : (
-                                  <div className="h-9 flex items-center text-xs text-muted-foreground bg-muted rounded-md px-2 truncate flex-1 min-w-0">
+                                  <div className="h-9 flex items-center justify-end text-right font-mono tabular-nums text-xs text-muted-foreground bg-muted rounded-md px-2 truncate flex-1 min-w-0">
                                     {fmtInvoice(line)}
                                   </div>
                                 )}
@@ -1383,16 +1416,16 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
                                 </Button>
                               </div>
                             ) : (
-                              <div className="h-9 flex items-center text-xs text-muted-foreground bg-muted rounded-md px-2 truncate">
+                              <div className="h-9 flex items-center justify-end text-right font-mono tabular-nums text-xs text-muted-foreground bg-muted rounded-md px-2 truncate">
                                 {fmtInvoice(line)}
                               </div>
                             )}
                           </div>
                           {/* 라인별 인보이스 KRW(자동) 표시 제거 — 해외직수입의 원가 기준은 면장 CIF 원화금액(SSoT) */}
                           <div className="w-24 space-y-1">
-                            <span className="text-[10px] text-muted-foreground font-medium">용량kW</span>
-                            <div className="h-9 flex items-center text-xs text-muted-foreground bg-muted rounded-md px-2">
-                              {calcKw(line)}
+                            <span className="text-[10px] text-muted-foreground font-medium">용량</span>
+                            <div className="h-9 flex items-center justify-end text-right font-mono tabular-nums text-xs text-muted-foreground bg-muted rounded-md px-2">
+                              {formatCapacityFromKw(calcCapacity(line))}
                             </div>
                           </div>
                         </div>
@@ -1403,14 +1436,14 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
 
                 {/* 총 구매금액 — 해외직수입은 USD만 표시 (원화는 면장 CIF 원화금액이 SSoT) */}
                 {selMfgId && lines.some(l => l.product_id && Number(l.quantity) > 0) && (
-                  <div className="rounded-md border-2 border-primary/20 bg-primary/5 px-3 py-2 flex flex-wrap items-center gap-4">
+                  <div className="rounded-md border-2 border-primary/20 bg-primary/5 px-3 py-2 flex flex-wrap items-center justify-between gap-4">
                     <span className="text-sm font-semibold">총 구매금액</span>
                     {isImport ? (
-                      <span className="text-sm">
+                      <span className="text-sm text-right">
                         USD <span className="font-mono font-semibold">${totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                       </span>
                     ) : (
-                      <span className="text-sm">
+                      <span className="text-sm text-right">
                         KRW <span className="font-mono font-semibold">₩{totalKRW.toLocaleString('ko-KR')}</span>
                       </span>
                     )}

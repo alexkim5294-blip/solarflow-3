@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Star, Settings2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -42,15 +41,9 @@ export default function QuickRegister({ userId, role }: Props) {
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="default"
-            size="sm"
-            className="h-7 gap-1 px-2.5 text-xs font-medium"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            빠른 등록
-          </Button>
+        <DropdownMenuTrigger className="inline-flex h-7 items-center justify-center gap-1 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground shadow-xs transition-colors hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50">
+          <Plus className="h-3.5 w-3.5" />
+          빠른 등록
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
           {visibleFavorites.length === 0 ? (

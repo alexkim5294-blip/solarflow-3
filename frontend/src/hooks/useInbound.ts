@@ -4,7 +4,7 @@ import { useAppStore } from '@/stores/appStore';
 import { companyParams } from '@/lib/companyUtils';
 import type { BLShipment, BLLineItem } from '@/types/inbound';
 
-export function useBLList(filters: { inbound_type?: string; status?: string } = {}) {
+export function useBLList(filters: { inbound_type?: string; status?: string; manufacturer_id?: string } = {}) {
   const [data, setData] = useState<BLShipment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,6 +18,7 @@ export function useBLList(filters: { inbound_type?: string; status?: string } = 
       const params = companyParams(selectedCompanyId);
       if (filters.inbound_type) params.set('inbound_type', filters.inbound_type);
       if (filters.status) params.set('status', filters.status);
+      if (filters.manufacturer_id) params.set('manufacturer_id', filters.manufacturer_id);
       const list = await fetchWithAuth<BLShipment[]>(`/api/v1/bls?${params}`);
       // F18: PO번호/LC번호 enrichment — 백엔드가 평탄 반환이라 클라이언트 룩업
       const needPo = Array.from(new Set(list.map((b) => b.po_id).filter((x): x is string => !!x && !list.find((l) => l.po_id === x)?.po_number)));
@@ -43,7 +44,7 @@ export function useBLList(filters: { inbound_type?: string; status?: string } = 
       setError(err instanceof Error ? err.message : '조회 실패');
     }
     setLoading(false);
-  }, [selectedCompanyId, filters.inbound_type, filters.status]);
+  }, [selectedCompanyId, filters.inbound_type, filters.status, filters.manufacturer_id]);
 
   useEffect(() => { load(); }, [load]);
 

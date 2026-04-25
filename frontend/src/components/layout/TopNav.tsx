@@ -60,6 +60,9 @@ export default function TopNav() {
   useEffect(() => { loadCompanies(); }, [loadCompanies]);
 
   const selectedCompany = companies.find((c) => c.company_id === selectedCompanyId);
+  const selectedCompanyLabel = !selectedCompanyId || selectedCompanyId === 'all'
+    ? '전체'
+    : (selectedCompany?.company_name ?? '법인 선택');
 
   const isPurchase  = ['/procurement', '/lc', '/inbound'].some(p => pathname === p || pathname.startsWith(p + '/'));
   const isInventory = pathname === '/inventory' || pathname.startsWith('/inventory/');
@@ -97,7 +100,7 @@ export default function TopNav() {
       {/* ② 법인 선택 */}
       <Select value={selectedCompanyId || 'all'} onValueChange={setCompanyId}>
         <SelectTrigger className="h-7 w-28 text-xs border-dashed shrink-0">
-          <span className="truncate">{selectedCompany?.company_name ?? '전체'}</span>
+          <span className="truncate">{selectedCompanyLabel}</span>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">전체</SelectItem>

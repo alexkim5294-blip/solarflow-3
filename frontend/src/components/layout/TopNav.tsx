@@ -3,7 +3,8 @@ import {
   ChevronDown, LayoutDashboard, Landmark, BarChart3,
   StickyNote, FileSignature, Settings, LogOut, User, FileText, History, Ship,
   Building2, Factory, Tag, Handshake, Warehouse, Banknote, HardHat,
-  Package, ClipboardList, Store,
+  Package, ClipboardList, Store, Shield, Truck, TrendingUp,
+  ScrollText, Receipt, Wallet, GitMerge,
 } from 'lucide-react';
 import QuickRegister from '@/components/layout/QuickRegister';
 import { cn } from '@/lib/utils';
@@ -54,6 +55,22 @@ const purchaseSections: { label: string; path: string; icon: React.ElementType; 
   { label: '단가이력', path: '/procurement?tab=price', icon: History,       menu: 'procurement' },
 ];
 
+const inventorySections: { label: string; path: string; icon: React.ElementType; menu: MenuKey }[] = [
+  { label: '가용재고',  path: '/inventory',               icon: Shield,        menu: 'inventory' },
+  { label: '실재고',    path: '/inventory?tab=physical',  icon: Package,       menu: 'inventory' },
+  { label: '미착품',    path: '/inventory?tab=incoming',  icon: Truck,         menu: 'inventory' },
+  { label: '수급 전망', path: '/inventory?tab=forecast',  icon: TrendingUp,    menu: 'inventory' },
+  { label: '예약 등록', path: '/inventory?action=alloc',  icon: ClipboardList, menu: 'inventory' },
+];
+
+const salesSections: { label: string; path: string; icon: React.ElementType; menu: MenuKey }[] = [
+  { label: '수주',        path: '/orders',               icon: ScrollText, menu: 'orders' },
+  { label: '출고',        path: '/orders?tab=outbound',  icon: Truck,      menu: 'outbound' },
+  { label: '판매/계산서', path: '/orders?tab=sales',     icon: Receipt,    menu: 'outbound' },
+  { label: '수금',        path: '/orders?tab=receipts',  icon: Wallet,     menu: 'receipts' },
+  { label: '수금매칭',    path: '/orders?tab=matching',  icon: GitMerge,   menu: 'receipts' },
+];
+
 
 export default function TopNav() {
   const { pathname } = useLocation();
@@ -79,21 +96,16 @@ export default function TopNav() {
 
   const showPurchase  = canAccessMenu(r, 'procurement') || canAccessMenu(r, 'lc') || canAccessMenu(r, 'inbound');
   const showInventory = canAccessMenu(r, 'inventory');
-  const showSales     = canAccessMenu(r, 'orders') || canAccessMenu(r, 'outbound');
+  const showSales     = canAccessMenu(r, 'orders') || canAccessMenu(r, 'outbound') || canAccessMenu(r, 'receipts');
   const analysisVisible = analysisSections.filter(s => canAccessMenu(r, s.menu));
+  const inventoryVisible = inventorySections.filter(s => canAccessMenu(r, s.menu));
   const purchaseVisible = purchaseSections.filter(s => canAccessMenu(r, s.menu));
+  const salesVisible = salesSections.filter(s => canAccessMenu(r, s.menu));
   const showMasters     = canAccessMenu(r, 'masters');
   const toolsVisible    = toolSections.filter(s => canAccessMenu(r, s.menu));
 
   const isMasters = pathname.startsWith('/masters');
   const isTools   = ['/memo', '/approval', '/settings'].some(p => pathname.startsWith(p));
-
-  const navLinkClass = (active: boolean) => cn(
-    'flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap',
-    active
-      ? 'bg-primary/10 text-primary'
-      : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
-  );
 
   return (
     <header className="h-14 border-b bg-card flex items-center gap-2 px-4 shrink-0 z-40">
@@ -124,10 +136,24 @@ export default function TopNav() {
 
       {/* ③ 메인 네비게이션 — 가용재고가 첫 번째 */}
       <nav className="flex items-center gap-0.5">
-        {showInventory && (
-          <Link to="/inventory" className={navLinkClass(isInventory)}>
-            <Package className="h-3.5 w-3.5" />가용재고
-          </Link>
+        {showInventory && inventoryVisible.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger className={cn(
+              'flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors select-none whitespace-nowrap',
+              isInventory ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+            )}>
+              <Package className="h-3.5 w-3.5" />가용재고
+              <ChevronDown className="h-3 w-3 opacity-60" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-44">
+              {inventoryVisible.map((s) => (
+                <DropdownMenuItem key={s.path} onClick={() => navigate(s.path)} className="gap-2">
+                  <s.icon className="h-3.5 w-3.5 text-muted-foreground" />
+                  {s.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
         {showPurchase && purchaseVisible.length > 0 && (
           <DropdownMenu>
@@ -148,10 +174,24 @@ export default function TopNav() {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        {showSales && (
-          <Link to="/orders" className={navLinkClass(isSales)}>
-            <Store className="h-3.5 w-3.5" />판매
-          </Link>
+        {showSales && salesVisible.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger className={cn(
+              'flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors select-none whitespace-nowrap',
+              isSales ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+            )}>
+              <Store className="h-3.5 w-3.5" />판매
+              <ChevronDown className="h-3 w-3 opacity-60" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-44">
+              {salesVisible.map((s) => (
+                <DropdownMenuItem key={s.path} onClick={() => navigate(s.path)} className="gap-2">
+                  <s.icon className="h-3.5 w-3.5 text-muted-foreground" />
+                  {s.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
 
         {/* 현황/분석 드롭다운 */}

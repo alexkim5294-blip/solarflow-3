@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
@@ -105,17 +105,33 @@ function getErrorMessage(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
 }
 
+type InventoryTab = 'avail' | 'physical' | 'incoming' | 'forecast';
+const INVENTORY_TABS = new Set<string>(['avail', 'physical', 'incoming', 'forecast']);
+
+function getInventoryTab(search: string): InventoryTab {
+  const tab = new URLSearchParams(search).get('tab');
+  return INVENTORY_TABS.has(tab ?? '') ? (tab as InventoryTab) : 'avail';
+}
+
 export default function InventoryPage() {
   const selectedCompanyId = useAppStore((s) => s.selectedCompanyId);
   const location = useLocation();
   const navigate = useNavigate();
-  const tabRefPhysical  = useRef<HTMLButtonElement>(null);
-  const tabRefIncoming  = useRef<HTMLButtonElement>(null);
-  const tabRefAvail     = useRef<HTMLButtonElement>(null);
+  const [activeTab, setActiveTab] = useState<InventoryTab>(() => getInventoryTab(location.search));
+  const handleTabChange = useCallback((tab: string) => {
+    const nextTab = INVENTORY_TABS.has(tab) ? (tab as InventoryTab) : 'avail';
+    setActiveTab(nextTab);
+
+    const params = new URLSearchParams(location.search);
+    params.delete('action');
+    if (nextTab === 'avail') params.delete('tab');
+    else params.set('tab', nextTab);
+
+    const nextSearch = params.toString();
+    navigate(`/inventory${nextSearch ? '?' + nextSearch : ''}`, { replace: true });
+  }, [location.search, navigate]);
   const handleCardClick = (tab: 'physical' | 'incoming' | 'avail') => {
-    if (tab === 'physical')  tabRefPhysical.current?.click();
-    else if (tab === 'incoming') tabRefIncoming.current?.click();
-    else if (tab === 'avail')    tabRefAvail.current?.click();
+    handleTabChange(tab);
   };
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [mfgFilter, setMfgFilter] = useState<string>('');
@@ -169,6 +185,10 @@ export default function InventoryPage() {
 
   // location.key가 바뀔 때마다 (다른 메뉴→재고로 돌아올 때) 배정 목록 갱신
   useEffect(() => { fetchAllocations(); }, [fetchAllocations, location.key]);
+
+  useEffect(() => {
+    setActiveTab(getInventoryTab(location.search));
+  }, [location.search]);
 
   // ?action=alloc 처리 — TopNav 빠른 등록에서 진입 시 사용예약 모달 자동 오픈
   useEffect(() => {
@@ -522,11 +542,11 @@ export default function InventoryPage() {
         </Alert>
       )}
 
-      <Tabs defaultValue="avail">
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList>
-          <TabsTrigger ref={tabRefAvail}     value="avail"><Shield className="h-3.5 w-3.5" />가용재고</TabsTrigger>
-          <TabsTrigger ref={tabRefPhysical}  value="physical"><Package className="h-3.5 w-3.5" />실재고</TabsTrigger>
-          <TabsTrigger ref={tabRefIncoming}  value="incoming"><Truck className="h-3.5 w-3.5" />미착품</TabsTrigger>
+          <TabsTrigger value="avail"><Shield className="h-3.5 w-3.5" />가용재고</TabsTrigger>
+          <TabsTrigger value="physical"><Package className="h-3.5 w-3.5" />실재고</TabsTrigger>
+          <TabsTrigger value="incoming"><Truck className="h-3.5 w-3.5" />미착품</TabsTrigger>
           <TabsTrigger value="forecast"><TrendingUp className="h-3.5 w-3.5" />수급 전망</TabsTrigger>
         </TabsList>
         <div className="flex gap-2 mt-3">

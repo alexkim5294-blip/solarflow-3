@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import type { InventoryItem } from '@/types/inventory';
 import type { Partner, ConstructionSite, Product } from '@/types/masters';
 import type { BLShipment } from '@/types/inbound';
+import { statusLabel } from '@/types/inbound';
 
 /* ─── 타입 ─────────────────────────────────────── */
 export interface InventoryAllocation {
@@ -37,6 +38,7 @@ export interface InventoryAllocation {
   outbound_id?: string;
   order_id?: string;
   group_id?: string;
+  bl_id?: string;
   created_at: string;
 }
 
@@ -855,7 +857,11 @@ export default function AllocationForm({
                     text={selectedBlId
                       ? (() => {
                           const bl = bls.find(b => b.bl_id === selectedBlId);
-                          return bl ? `${bl.bl_number} | ${bl.eta?.slice(0,10) ?? bl.actual_arrival?.slice(0,10) ?? '—'} | ${bl.status}` : selectedBlId.slice(0,8);
+                          if (!bl) return selectedBlId.slice(0, 8);
+                          const date = bl.actual_arrival?.slice(0, 10) ?? bl.eta?.slice(0, 10) ?? '—';
+                          const stKo = statusLabel(bl.inbound_type, bl.status);
+                          const spec = selectedItem?.spec_wp ? ` ${selectedItem.spec_wp}W` : '';
+                          return `${bl.manufacturer_name ?? '—'}${spec} | ${bl.bl_number} | ${date} | ${stKo}`;
                         })()
                       : ''}
                     placeholder="B/L 선택 안함"
@@ -864,14 +870,16 @@ export default function AllocationForm({
                 <SelectContent>
                   <SelectItem value="_none">선택 안함</SelectItem>
                   {bls.map((b) => {
-                    const dateStr = b.eta?.slice(0,10) ?? b.actual_arrival?.slice(0,10) ?? '—';
-                    const isCompleted = ['completed','erp_done'].includes(b.status);
+                    const date = b.actual_arrival?.slice(0, 10) ?? b.eta?.slice(0, 10) ?? '—';
+                    const stKo = statusLabel(b.inbound_type, b.status);
+                    const isCompleted = ['completed', 'erp_done'].includes(b.status);
+                    const spec = selectedItem?.spec_wp ? ` ${selectedItem.spec_wp}W` : '';
                     return (
                       <SelectItem key={b.bl_id} value={b.bl_id}>
                         <span className={cn('text-xs font-medium mr-1.5', isCompleted ? 'text-green-600' : 'text-blue-600')}>
-                          [{b.status}]
+                          [{stKo}]
                         </span>
-                        {b.bl_number} | {dateStr}
+                        {b.manufacturer_name ?? '—'}{spec} | {b.bl_number} | {date}
                       </SelectItem>
                     );
                   })}

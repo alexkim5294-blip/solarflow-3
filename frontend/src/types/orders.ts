@@ -37,6 +37,7 @@ export interface Order {
   spare_qty?: number;
   status: OrderStatus;
   memo?: string;
+  bl_id?: string;
 }
 
 export interface Receipt {

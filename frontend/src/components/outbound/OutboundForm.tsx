@@ -16,6 +16,7 @@ import { fetchWithAuth } from '@/lib/api';
 import { USAGE_CATEGORY_LABEL, type Outbound, type UsageCategory } from '@/types/outbound';
 import type { Product, Warehouse } from '@/types/masters';
 import type { BLShipment } from '@/types/inbound';
+import { statusLabel } from '@/types/inbound';
 
 function Txt({ text, placeholder = '선택' }: { text: string; placeholder?: string }) {
   return <span className={`flex flex-1 text-left truncate ${text ? '' : 'text-muted-foreground'}`} data-slot="select-value">{text || placeholder}</span>;
@@ -308,16 +309,30 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData }:
                       <Select value={entry.bl_id} onValueChange={(v) => updateBlEntry(i, 'bl_id', v === '_none' ? '' : (v ?? ''))}>
                         <SelectTrigger className="w-full h-8 text-xs">
                           <span className={`flex flex-1 text-left truncate ${entry.bl_id ? '' : 'text-muted-foreground'}`}>
-                            {selectedBl ? `${selectedBl.bl_number} | ${selectedBl.eta?.slice(0,10) ?? '—'} | ${selectedBl.status}` : '— B/L 선택 —'}
+                            {selectedBl
+                              ? (() => {
+                                  const date = selectedBl.actual_arrival?.slice(0, 10) ?? selectedBl.eta?.slice(0, 10) ?? '—';
+                                  const stKo = statusLabel(selectedBl.inbound_type, selectedBl.status);
+                                  const spec = selectedProduct?.spec_wp ? ` ${selectedProduct.spec_wp}W` : '';
+                                  return `${selectedBl.manufacturer_name ?? '—'}${spec} | ${selectedBl.bl_number} | ${date} | ${stKo}`;
+                                })()
+                              : '— B/L 선택 —'}
                           </span>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="_none">— 선택 안함 —</SelectItem>
-                          {bls.map((b) => (
-                            <SelectItem key={b.bl_id} value={b.bl_id}>
-                              {b.bl_number} | {b.eta?.slice(0,10) ?? '—'} | {b.port ?? '—'} | {b.status}
-                            </SelectItem>
-                          ))}
+                          {bls.map((b) => {
+                            const date = b.actual_arrival?.slice(0, 10) ?? b.eta?.slice(0, 10) ?? '—';
+                            const stKo = statusLabel(b.inbound_type, b.status);
+                            const isCompleted = ['completed', 'erp_done'].includes(b.status);
+                            const spec = selectedProduct?.spec_wp ? ` ${selectedProduct.spec_wp}W` : '';
+                            return (
+                              <SelectItem key={b.bl_id} value={b.bl_id}>
+                                <span className={`text-xs font-medium mr-1.5 ${isCompleted ? 'text-green-600' : 'text-blue-600'}`}>[{stKo}]</span>
+                                {b.manufacturer_name ?? '—'}{spec} | {b.bl_number} | {date}
+                              </SelectItem>
+                            );
+                          })}
                         </SelectContent>
                       </Select>
                       {selectedBl && (

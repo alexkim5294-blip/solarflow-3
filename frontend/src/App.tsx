@@ -7,7 +7,6 @@ import AppLayout from '@/components/layout/AppLayout';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
-const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const InventoryPage = lazy(() => import('@/pages/InventoryPage'));
 const InboundPage = lazy(() => import('@/pages/InboundPage'));
 const ProcurementPage = lazy(() => import('@/pages/ProcurementPage'));

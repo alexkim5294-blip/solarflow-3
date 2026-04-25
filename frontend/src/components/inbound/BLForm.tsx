@@ -420,7 +420,7 @@ export default function BLForm({ open, onOpenChange, onSubmit, editData, presetP
       po_line_id: l.po_line_id,
       product_id: l.product_id,
       contracted_qty: l.quantity ?? 0,
-      shipped_qty: shippedByLine[l.po_line_id] ?? shippedByProduct[l.product_id] ?? 0,
+      shipped_qty: (l.po_line_id ? shippedByLine[l.po_line_id] : undefined) ?? shippedByProduct[l.product_id] ?? 0,
       unit_price_usd: l.unit_price_usd,
       unit_price_usd_wp: l.unit_price_usd_wp,
       unit_price_krw_wp: l.unit_price_krw_wp,

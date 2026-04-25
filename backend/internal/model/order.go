@@ -60,6 +60,7 @@ type Order struct {
 	FulfillmentSource  string   `json:"fulfillment_source"`
 	SpareQty           *int     `json:"spare_qty"`
 	Memo               *string  `json:"memo"`
+	BLID               *string  `json:"bl_id"`
 }
 
 // CreateOrderRequest — 수주 등록 시 클라이언트가 보내는 데이터
@@ -87,6 +88,7 @@ type CreateOrderRequest struct {
 	FulfillmentSource  string   `json:"fulfillment_source"`
 	SpareQty           *int     `json:"spare_qty"`
 	Memo               *string  `json:"memo"`
+	BLID               *string  `json:"bl_id,omitempty"`
 }
 
 // Validate — 수주 등록 요청의 입력값을 검증
@@ -166,6 +168,7 @@ type UpdateOrderRequest struct {
 	FulfillmentSource  *string  `json:"fulfillment_source,omitempty"`
 	SpareQty           *int     `json:"spare_qty,omitempty"`
 	Memo               *string  `json:"memo,omitempty"`
+	BLID               *string  `json:"bl_id,omitempty"`
 }
 
 // Validate — 수주 수정 요청의 입력값을 검증

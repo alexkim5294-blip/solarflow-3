@@ -94,6 +94,7 @@ export default function InventoryPage() {
       if (m) params.set('order_no', m[1]);
     }
     if (linkedAllocId) params.set('linked_alloc_id', linkedAllocId);
+    if (alloc.bl_id) params.set('bl_id', alloc.bl_id);
     window.location.href = `/orders?${params.toString()}`;
   };
 

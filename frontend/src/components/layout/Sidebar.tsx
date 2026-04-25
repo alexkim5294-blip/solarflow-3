@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  Package, LayoutDashboard, PackageCheck, ClipboardList, Truck,
+  LayoutDashboard, PackageCheck, ClipboardList, Truck,
   Calculator, Landmark, Database, Search, StickyNote,
   FileSignature, Settings, ChevronDown, ChevronRight, LogOut,
   ScrollText, Wallet, Building2, Home,

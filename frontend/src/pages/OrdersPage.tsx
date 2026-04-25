@@ -69,6 +69,7 @@ export default function OrdersPage() {
     const site          = params.get('site') ?? undefined;
     const orderNo       = params.get('order_no') ?? undefined;
     const linkedAllocId = params.get('linked_alloc_id') ?? undefined;
+    const blId          = params.get('bl_id') ?? undefined;
 
     setPendingAllocId(allocId);
     if (linkedAllocId) setPendingLinkedAllocId(linkedAllocId);
@@ -80,6 +81,7 @@ export default function OrdersPage() {
       customer_hint: customer,
       site_name: site,
       order_number: orderNo,
+      bl_id: blId,
     });
     setOrderFormOpen(true);
     // URL 정리 (파라미터 제거)

@@ -20,6 +20,8 @@ import {
   type Order, type ReceiptMethod, type ManagementCategory, type FulfillmentSource,
 } from '@/types/orders';
 import type { Product, Partner, ConstructionSite } from '@/types/masters';
+import type { BLShipment } from '@/types/inbound';
+import { statusLabel } from '@/types/inbound';
 
 function Txt({ text, placeholder = '선택' }: { text: string; placeholder?: string }) {
   return <span className={`flex flex-1 text-left truncate ${text ? '' : 'text-muted-foreground'}`} data-slot="select-value">{text || placeholder}</span>;
@@ -56,6 +58,7 @@ export interface OrderPrefillData {
   customer_hint?: string;       // 거래처명으로 partner_id 자동 매칭 시도
   site_name?: string;
   order_number?: string;        // 고객 발주번호
+  bl_id?: string;               // 사용예약에서 이어받은 BL (원가 추적용)
 }
 
 interface Props {
@@ -80,6 +83,8 @@ export default function OrderForm({ open, onOpenChange, onSubmit, editData, pref
   const [sites, setSites] = useState<ConstructionSite[]>([]);
   const [inventoryInfo, setInventoryInfo] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState('');
+  const [blId, setBlId] = useState('');
+  const [bls, setBls] = useState<BLShipment[]>([]);
   // 천단위 표시용 display state
   const [qtyDisplay, setQtyDisplay] = useState('');
   const [spareQtyDisplay, setSpareQtyDisplay] = useState('');
@@ -108,6 +113,14 @@ export default function OrderForm({ open, onOpenChange, onSubmit, editData, pref
         .then(setSites).catch(() => {});
     }
   }, [selectedCompanyId]);
+
+  // 품번 선택 시 해당 제조사의 입고완료 BL 목록 로드
+  useEffect(() => {
+    if (!selectedProduct?.manufacturer_id) { setBls([]); return; }
+    fetchWithAuth<BLShipment[]>(`/api/v1/bls?manufacturer_id=${selectedProduct.manufacturer_id}`)
+      .then((list) => setBls((list ?? []).filter((b) => ['completed', 'erp_done', 'arrived', 'customs'].includes(b.status))))
+      .catch(() => setBls([]));
+  }, [selectedProduct?.manufacturer_id]);
 
   // 충당소스 변경 시 재고 정보 표시
   useEffect(() => {
@@ -151,6 +164,7 @@ export default function OrderForm({ open, onOpenChange, onSubmit, editData, pref
         });
         setQtyDisplay(fmtInt(editData.quantity));
         setSpareQtyDisplay(fmtInt(editData.spare_qty));
+        setBlId(editData.bl_id ?? '');
       } else if (prefillData) {
         // 가용재고 배정에서 넘어온 경우 — 품목/수량/관리구분/충당소스/발주번호 자동 입력
         const today = new Date().toISOString().slice(0, 10);
@@ -170,6 +184,7 @@ export default function OrderForm({ open, onOpenChange, onSubmit, editData, pref
         });
         setQtyDisplay(prefillData.quantity ? prefillData.quantity.toLocaleString('ko-KR') : '');
         setSpareQtyDisplay('');
+        setBlId(prefillData.bl_id ?? '');
       } else {
         const today = new Date().toISOString().slice(0, 10);
         reset({
@@ -181,6 +196,7 @@ export default function OrderForm({ open, onOpenChange, onSubmit, editData, pref
         });
         setQtyDisplay('');
         setSpareQtyDisplay('');
+        setBlId('');
       }
     }
   }, [open, editData, prefillData, reset]);
@@ -201,6 +217,7 @@ export default function OrderForm({ open, onOpenChange, onSubmit, editData, pref
       company_id: selectedCompanyId,
       capacity_kw: capacityKw,
     };
+    if (blId) payload.bl_id = blId;
     if (!data.order_number) delete payload.order_number;
     if (data.deposit_rate === '' || data.deposit_rate === undefined) delete payload.deposit_rate;
     if (data.spare_qty === '' || data.spare_qty === undefined) delete payload.spare_qty;
@@ -371,6 +388,57 @@ export default function OrderForm({ open, onOpenChange, onSubmit, editData, pref
               </div>
             )}
           </div>
+
+          {/* B/L 연결 — 원가 추적용, 품번 선택 후 표시 */}
+          {selectedProduct && bls.length > 0 && (
+            <div className="space-y-1.5">
+              <Label>
+                B/L 연결
+                <span className="ml-1 text-muted-foreground font-normal text-xs">(원가 추적용, 선택)</span>
+              </Label>
+              <Select value={blId || '_none'} onValueChange={(v) => setBlId(v === '_none' ? '' : (v ?? ''))}>
+                <SelectTrigger className="w-full">
+                  <span className={`flex flex-1 text-left truncate ${blId ? '' : 'text-muted-foreground'}`}>
+                    {blId ? (() => {
+                      const bl = bls.find(b => b.bl_id === blId);
+                      if (!bl) return blId.slice(0, 8);
+                      const date = bl.actual_arrival?.slice(0, 10) ?? bl.eta?.slice(0, 10) ?? '—';
+                      const stKo = statusLabel(bl.inbound_type, bl.status);
+                      const spec = selectedProduct?.spec_wp ? ` ${selectedProduct.spec_wp}W` : '';
+                      return `${bl.manufacturer_name ?? '—'}${spec} | ${bl.bl_number} | ${date} | ${stKo}`;
+                    })() : 'B/L 선택 안함'}
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">선택 안함</SelectItem>
+                  {bls.map((b) => {
+                    const date = b.actual_arrival?.slice(0, 10) ?? b.eta?.slice(0, 10) ?? '—';
+                    const stKo = statusLabel(b.inbound_type, b.status);
+                    const isCompleted = ['completed', 'erp_done'].includes(b.status);
+                    const spec = selectedProduct?.spec_wp ? ` ${selectedProduct.spec_wp}W` : '';
+                    return (
+                      <SelectItem key={b.bl_id} value={b.bl_id}>
+                        <span className={`text-xs font-medium mr-1.5 ${isCompleted ? 'text-green-600' : 'text-blue-600'}`}>[{stKo}]</span>
+                        {b.manufacturer_name ?? '—'}{spec} | {b.bl_number} | {date}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              {blId && (() => {
+                const bl = bls.find(b => b.bl_id === blId);
+                if (!bl) return null;
+                return (
+                  <div className="rounded border bg-blue-50 px-3 py-1.5 text-[10px] text-blue-700 flex gap-4">
+                    <span>항구: {bl.port ?? '—'}</span>
+                    <span>포워더: {bl.forwarder ?? '—'}</span>
+                    <span>ETA: {bl.eta?.slice(0, 10) ?? '—'}</span>
+                    {bl.exchange_rate && <span>환율: {bl.exchange_rate.toLocaleString('ko-KR')}</span>}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5">

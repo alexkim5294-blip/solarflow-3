@@ -88,9 +88,9 @@ export default function BankingPage() {
               ) : (
                 visibleGroups.map((group) => {
                   const gLimit = group.rows.reduce((s, r) => s + r.lc_limit_usd, 0);
-                  const gUsed  = group.rows.reduce((s, r) => s + r.used, 0);
+                  const gUsed  = group.rows.reduce((s, r) => s + Math.min(r.used, r.lc_limit_usd), 0);
                   const gAvail = group.rows.reduce((s, r) => s + r.available, 0);
-                  const gRate  = gLimit > 0 ? (gUsed / gLimit) * 100 : 0;
+                  const gRate  = gLimit > 0 ? Math.min(100, (gUsed / gLimit) * 100) : 0;
                   const rateColor = gRate >= 90 ? 'text-red-600' : gRate >= 70 ? 'text-orange-500' : 'text-green-600';
 
                   return (

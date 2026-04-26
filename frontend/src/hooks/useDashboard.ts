@@ -10,6 +10,7 @@ import type {
 } from '@/types/dashboard';
 import type { LCLimitTimeline } from '@/types/banking';
 import type { SaleListItem } from '@/types/outbound';
+import type { PriceHistory } from '@/types/procurement';
 
 // 비유: 대시보드 데이터를 독립적으로 조회. 하나 실패해도 나머지는 표시.
 
@@ -41,11 +42,25 @@ export interface CustomerAnalysis {
 }
 
 interface PriceTrendResponse {
-  manufacturers: {
+  manufacturers?: {
     name: string;
     data_points: { period: string; price_usd_wp: number }[];
   }[];
+  trends?: {
+    manufacturer_name: string;
+    product_name: string;
+    spec_wp: number;
+    data_points: {
+      period: string;
+      avg_purchase_price_usd_wp?: number | null;
+      avg_sale_price_krw_wp?: number | null;
+    }[];
+  }[];
 }
+
+type DashboardPriceHistory = PriceHistory & {
+  manufacturers?: { name_kr?: string };
+};
 
 function makeSectionState<T>(initial?: T | null): DashboardSectionState<T> {
   return { data: initial ?? null, loading: true, error: null };
@@ -110,13 +125,67 @@ function mergeCustomer(rs: CustomerAnalysis[]): CustomerAnalysis {
 
 function mergePriceTrend(rs: PriceTrendResponse[]): PriceTrendResponse {
   const seen = new Set<string>();
-  const mfgs: PriceTrendResponse['manufacturers'] = [];
+  const mfgs: NonNullable<PriceTrendResponse['manufacturers']> = [];
   for (const r of rs) {
-    for (const m of r.manufacturers || []) {
+    for (const m of toManufacturerPriceRows(r)) {
       if (!seen.has(m.name)) { seen.add(m.name); mfgs.push(m); }
     }
   }
   return { manufacturers: mfgs };
+}
+
+function toManufacturerPriceRows(r: PriceTrendResponse): NonNullable<PriceTrendResponse['manufacturers']> {
+  if (r.manufacturers?.length) return r.manufacturers;
+  const byManufacturer = new Map<string, Map<string, { sum: number; count: number }>>();
+  for (const trend of r.trends || []) {
+    const name = trend.manufacturer_name;
+    const periodMap = byManufacturer.get(name) ?? new Map<string, { sum: number; count: number }>();
+    for (const point of trend.data_points || []) {
+      const price = point.avg_purchase_price_usd_wp;
+      if (price == null || price <= 0) continue;
+      const prev = periodMap.get(point.period) ?? { sum: 0, count: 0 };
+      prev.sum += price;
+      prev.count += 1;
+      periodMap.set(point.period, prev);
+    }
+    byManufacturer.set(name, periodMap);
+  }
+  return Array.from(byManufacturer.entries()).map(([name, periodMap]) => ({
+    name,
+    data_points: Array.from(periodMap.entries())
+      .map(([period, value]) => ({ period, price_usd_wp: value.sum / Math.max(value.count, 1) }))
+      .sort((a, b) => a.period.localeCompare(b.period)),
+  }));
+}
+
+function priceHistoriesToTrend(histories: DashboardPriceHistory[]): PriceTrend {
+  const byManufacturer = new Map<string, Map<string, { sum: number; count: number }>>();
+  for (const history of histories) {
+    const name = history.manufacturers?.name_kr || history.manufacturer_id || '제조사 미지정';
+    const period = (history.change_date || '').slice(0, 7);
+    if (!period || history.new_price <= 0) continue;
+    const periodMap = byManufacturer.get(name) ?? new Map<string, { sum: number; count: number }>();
+    const prev = periodMap.get(period) ?? { sum: 0, count: 0 };
+    prev.sum += history.new_price;
+    prev.count += 1;
+    periodMap.set(period, prev);
+    byManufacturer.set(name, periodMap);
+  }
+  const MFG_COLORS: Record<string, string> = {
+    '진코솔라': '#3b82f6', 'JinkoSolar': '#3b82f6',
+    '트리나솔라': '#ef4444', 'TrinaSolar': '#ef4444',
+    '라이젠에너지': '#22c55e', 'Risen': '#22c55e',
+    'LONGi': '#f97316', '롱기': '#f97316', '론지': '#f97316',
+  };
+  return {
+    manufacturers: Array.from(byManufacturer.entries()).map(([name, periodMap], i) => ({
+      name,
+      color: MFG_COLORS[name] || ['#6b7280', '#8b5cf6', '#06b6d4', '#f59e0b', '#ec4899'][i % 5],
+      data_points: Array.from(periodMap.entries())
+        .map(([period, value]) => ({ period, price_usd_wp: value.sum / Math.max(value.count, 1) }))
+        .sort((a, b) => a.period.localeCompare(b.period)),
+    })),
+  };
 }
 
 function mergeLCTimeline(rs: LCLimitTimeline[]): LCLimitTimeline {
@@ -180,6 +249,7 @@ export function useDashboard(companyId: string | null, userRole: string) {
     const fetchInventory = () => fetchCalc<InventoryResponse>(companyId, '/api/v1/calc/inventory', {}, mergeInventory);
     const fetchCustomerAnalysis = () => fetchCalc<CustomerAnalysis>(companyId, '/api/v1/calc/customer-analysis', {}, mergeCustomer);
     const fetchPriceTrendApi = () => fetchCalc<PriceTrendResponse>(companyId, '/api/v1/calc/price-trend', {}, mergePriceTrend);
+    const fetchPriceHistories = () => fetchWithAuth<DashboardPriceHistory[]>(companyQueryUrl('/api/v1/price-histories', companyId));
     const fetchLCTimeline = () => fetchCalc<LCLimitTimeline>(companyId, '/api/v1/calc/lc-limit-timeline', { months_ahead: 3 }, mergeLCTimeline);
     // CRUD: "all"이면 company_id 파라미터 생략 → 전체 반환
     const fetchSales = () => fetchWithAuth<SaleListItem[]>(companyQueryUrl('/api/v1/sales', companyId));
@@ -194,6 +264,7 @@ export function useDashboard(companyId: string | null, userRole: string) {
       fetchLCTimeline(),      // 4
       fetchBLs(),             // 5
       fetchOrders(),          // 6
+      fetchPriceHistories(),  // 7
     ]);
 
     // 0: Inventory -> summary + 장기재고 알림
@@ -245,20 +316,34 @@ export function useDashboard(companyId: string | null, userRole: string) {
     // 3: PriceTrend
     const ptResult = results[3];
     if (ptResult.status === 'fulfilled') {
-      const mfgs = (ptResult.value.manufacturers || []);
+      const mfgs = toManufacturerPriceRows(ptResult.value);
       const MFG_COLORS: Record<string, string> = {
         '진코솔라': '#3b82f6', 'JinkoSolar': '#3b82f6',
         '트리나솔라': '#ef4444', 'TrinaSolar': '#ef4444',
         '라이젠에너지': '#22c55e', 'Risen': '#22c55e',
-        'LONGi': '#f97316', '롱기': '#f97316',
+        'LONGi': '#f97316', '롱기': '#f97316', '론지': '#f97316',
       };
-      const colored = mfgs.map((m: PriceTrendResponse['manufacturers'][0], i: number) => ({
+      const colored = mfgs.map((m, i: number) => ({
         ...m,
         color: MFG_COLORS[m.name] || ['#6b7280', '#8b5cf6', '#06b6d4', '#f59e0b', '#ec4899'][i % 5],
       }));
-      setPriceTrend({ data: { manufacturers: colored }, loading: false, error: null });
+      if (colored.length > 0) {
+        setPriceTrend({ data: { manufacturers: colored }, loading: false, error: null });
+      } else {
+        const phResult = results[7];
+        setPriceTrend({
+          data: phResult.status === 'fulfilled' ? priceHistoriesToTrend(phResult.value) : { manufacturers: [] },
+          loading: false,
+          error: null,
+        });
+      }
     } else {
-      setPriceTrend({ data: null, loading: false, error: '단가 추이 조회 실패' });
+      const phResult = results[7];
+      setPriceTrend({
+        data: phResult.status === 'fulfilled' ? priceHistoriesToTrend(phResult.value) : null,
+        loading: false,
+        error: phResult.status === 'fulfilled' ? null : '단가 추이 조회 실패',
+      });
     }
 
     // 4: LC Timeline -> summary.lc_available_usd

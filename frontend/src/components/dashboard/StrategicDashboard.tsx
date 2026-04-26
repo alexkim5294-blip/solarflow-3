@@ -92,14 +92,7 @@ export default function StrategicDashboard({
         />
       ) : null}
 
-      {/* 2. 모듈 수급 전망 — 대시보드의 핵심 판단 영역 */}
-      {forecast.loading ? <LoadingSpinner /> : forecast.error ? (
-        <SectionError msg={forecast.error} />
-      ) : forecast.data ? (
-        <ModuleSupplyOutlook forecast={forecast.data} turnover={turnover.data} manufacturers={manufacturers} />
-      ) : null}
-
-      {/* 3. 재고 매트릭스 */}
+      {/* 2. 재고 매트릭스 */}
       {inventory.loading || turnover.loading ? <LoadingSpinner /> :
       inventory.error ? <SectionError msg={inventory.error} /> :
       turnover.error ? <SectionError msg={turnover.error} /> :
@@ -138,6 +131,13 @@ export default function StrategicDashboard({
           <PriceTrendChart data={priceTrend.data} />
         ) : null
       )}
+
+      {/* 모듈 수급 전망 — 상세 판단 영역은 화면 하단에 배치 */}
+      {forecast.loading ? <LoadingSpinner /> : forecast.error ? (
+        <SectionError msg={forecast.error} />
+      ) : forecast.data ? (
+        <ModuleSupplyOutlook forecast={forecast.data} turnover={turnover.data} manufacturers={manufacturers} />
+      ) : null}
     </div>
   );
 }

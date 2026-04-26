@@ -16,6 +16,7 @@ import type {
   ModuleDemandForecastPayload,
 } from '@/types/inventory';
 import type { Manufacturer } from '@/types/masters';
+import type { Company } from '@/types/masters';
 import type { SaleListItem } from '@/types/outbound';
 
 interface Props {
@@ -26,6 +27,7 @@ interface Props {
 
 interface ModuleOption {
   key: string;
+  companyId: string;
   specWp: number;
   width: number;
   height: number;
@@ -34,6 +36,7 @@ interface ModuleOption {
 }
 
 interface FormState {
+  companyId: string;
   siteName: string;
   demandMonth: string;
   moduleKey: string;
@@ -55,8 +58,8 @@ function monthOffset(month: string, delta: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function moduleKey(specWp: number, width: number, height: number): string {
-  return `${width}x${height}:${specWp}`;
+function moduleKey(specWp: number, width: number, height: number, companyId?: string): string {
+  return `${companyId || 'all'}:${width}x${height}:${specWp}`;
 }
 
 function monthRange(count: number): string[] {
@@ -69,6 +72,7 @@ function mw(value: number): string {
 
 function emptyForm(defaultModuleKey: string): FormState {
   return {
+    companyId: '',
     siteName: '',
     demandMonth: nextMonth(),
     moduleKey: defaultModuleKey,
@@ -87,6 +91,7 @@ function saleMonth(sale: SaleListItem): string {
 export default function ModuleDemandForecastPanel({ companyId, inventoryItems, manufacturers }: Props) {
   const [demands, setDemands] = useState<ModuleDemandForecast[]>([]);
   const [sales, setSales] = useState<SaleListItem[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -95,7 +100,8 @@ export default function ModuleDemandForecastPanel({ companyId, inventoryItems, m
   const moduleOptions = useMemo(() => {
     const map = new Map<string, ModuleOption>();
     for (const item of inventoryItems) {
-      const key = moduleKey(item.spec_wp, item.module_width_mm, item.module_height_mm);
+      const itemCompanyId = item.company_id || companyId;
+      const key = moduleKey(item.spec_wp, item.module_width_mm, item.module_height_mm, itemCompanyId);
       const prev = map.get(key);
       const securedKw = item.total_secured_kw || item.physical_kw + item.incoming_kw;
       if (prev) {
@@ -103,6 +109,7 @@ export default function ModuleDemandForecastPanel({ companyId, inventoryItems, m
       } else {
         map.set(key, {
           key,
+          companyId: itemCompanyId,
           specWp: item.spec_wp,
           width: item.module_width_mm,
           height: item.module_height_mm,
@@ -112,11 +119,12 @@ export default function ModuleDemandForecastPanel({ companyId, inventoryItems, m
       }
     }
     return Array.from(map.values()).sort((a, b) => {
+      if (a.companyId !== b.companyId) return a.companyId.localeCompare(b.companyId);
       if (a.width !== b.width) return a.width - b.width;
       if (a.height !== b.height) return a.height - b.height;
       return a.specWp - b.specWp;
     });
-  }, [inventoryItems]);
+  }, [companyId, inventoryItems]);
 
   const [form, setForm] = useState<FormState>(() => emptyForm(moduleOptions[0]?.key ?? ''));
 
@@ -131,12 +139,14 @@ export default function ModuleDemandForecastPanel({ companyId, inventoryItems, m
     setLoading(true);
     setError('');
     try {
-      const [demandList, saleList] = await Promise.all([
+      const [demandList, saleList, companyList] = await Promise.all([
         fetchWithAuth<ModuleDemandForecast[]>(companyQueryUrl('/api/v1/module-demand-forecasts', companyId)),
         fetchWithAuth<SaleListItem[]>(companyQueryUrl('/api/v1/sales', companyId)),
+        fetchWithAuth<Company[]>('/api/v1/companies'),
       ]);
       setDemands(demandList);
       setSales(saleList);
+      setCompanies(companyList);
     } catch (err) {
       setError(err instanceof Error ? err.message : '수급 forecast 데이터를 불러오지 못했습니다');
     } finally {
@@ -148,7 +158,7 @@ export default function ModuleDemandForecastPanel({ companyId, inventoryItems, m
 
   const openNew = () => {
     setEditing(null);
-    setForm(emptyForm(moduleOptions[0]?.key ?? ''));
+    setForm({ ...emptyForm(moduleOptions[0]?.key ?? ''), companyId: companyId === 'all' ? (moduleOptions[0]?.companyId ?? '') : companyId });
     setFormOpen(true);
   };
 
@@ -156,8 +166,9 @@ export default function ModuleDemandForecastPanel({ companyId, inventoryItems, m
     setEditing(item);
     setForm({
       siteName: item.site_name,
+      companyId: item.company_id,
       demandMonth: item.demand_month,
-      moduleKey: moduleKey(item.spec_wp, item.module_width_mm, item.module_height_mm),
+      moduleKey: moduleKey(item.spec_wp, item.module_width_mm, item.module_height_mm, item.company_id),
       manufacturerId: item.manufacturer_id || 'any',
       requiredMw: String(item.required_kw / 1000),
       status: item.status,
@@ -169,13 +180,15 @@ export default function ModuleDemandForecastPanel({ companyId, inventoryItems, m
   const save = async () => {
     const option = moduleOptions.find((m) => m.key === form.moduleKey);
     const requiredMw = Number(form.requiredMw);
+    const targetCompanyId = companyId === 'all' ? form.companyId : companyId;
     if (!option) { setError('모듈군을 선택해 주세요'); return; }
+    if (!targetCompanyId) { setError('법인을 선택해 주세요'); return; }
     if (!form.siteName.trim()) { setError('현장명은 필수입니다'); return; }
     if (!form.demandMonth) { setError('투입월은 필수입니다'); return; }
     if (!Number.isFinite(requiredMw) || requiredMw <= 0) { setError('필요 용량은 양수여야 합니다'); return; }
 
     const payload: ModuleDemandForecastPayload = {
-      company_id: companyId,
+      company_id: targetCompanyId,
       site_name: form.siteName.trim(),
       demand_month: form.demandMonth,
       demand_type: 'construction',
@@ -224,25 +237,28 @@ export default function ModuleDemandForecastPanel({ companyId, inventoryItems, m
     const salesByKey = new Map<string, number>();
     const productToModule = new Map<string, string>();
     for (const item of inventoryItems) {
-      productToModule.set(item.product_id, moduleKey(item.spec_wp, item.module_width_mm, item.module_height_mm));
+      const itemCompanyId = item.company_id || companyId;
+      const key = moduleKey(item.spec_wp, item.module_width_mm, item.module_height_mm, itemCompanyId);
+      productToModule.set(`${item.product_id}:${itemCompanyId}`, key);
+      productToModule.set(item.product_id, key);
     }
     for (const sale of sales) {
       const month = saleMonth(sale);
       if (month && !recentMonths.has(month)) continue;
-      const key = sale.product_id ? productToModule.get(sale.product_id) : undefined;
+      const key = sale.product_id ? productToModule.get(`${sale.product_id}:${sale.company_id ?? ''}`) ?? productToModule.get(sale.product_id) : undefined;
       if (!key) continue;
       const kw = sale.capacity_kw ?? (sale.quantity && sale.spec_wp ? sale.quantity * sale.spec_wp / 1000 : 0);
       salesByKey.set(key, (salesByKey.get(key) || 0) + kw);
     }
 
     const activeDemands = demands.filter((d) => d.status !== 'cancelled' && d.status !== 'done');
-    const demandKeys = new Set(activeDemands.map((d) => moduleKey(d.spec_wp, d.module_width_mm, d.module_height_mm)));
+    const demandKeys = new Set(activeDemands.map((d) => moduleKey(d.spec_wp, d.module_width_mm, d.module_height_mm, d.company_id)));
     const allKeys = new Set([...securedByKey.keys(), ...salesByKey.keys(), ...demandKeys]);
     const months = monthRange(12);
 
     return Array.from(allKeys).map((key) => {
       const option = moduleOptions.find((m) => m.key === key);
-      const matchingDemand = activeDemands.filter((d) => moduleKey(d.spec_wp, d.module_width_mm, d.module_height_mm) === key);
+      const matchingDemand = activeDemands.filter((d) => moduleKey(d.spec_wp, d.module_width_mm, d.module_height_mm, d.company_id) === key);
       const securedKw = securedByKey.get(key) || 0;
       const monthlyDistributionKw = (salesByKey.get(key) || 0) / 3;
       const plannedConstructionKw = matchingDemand.reduce((sum, d) => sum + d.required_kw, 0);
@@ -273,7 +289,7 @@ export default function ModuleDemandForecastPanel({ companyId, inventoryItems, m
       if (a.status !== b.status) return a.status === 'negotiate' ? -1 : b.status === 'negotiate' ? 1 : 0;
       return b.securedKw - a.securedKw;
     });
-  }, [demands, inventoryItems, moduleOptions, sales]);
+  }, [companyId, demands, inventoryItems, moduleOptions, sales]);
 
   const selectedManufacturerName = form.manufacturerId === 'any'
     ? '제조사 무관'
@@ -288,7 +304,7 @@ export default function ModuleDemandForecastPanel({ companyId, inventoryItems, m
             최근 판매 속도와 자체 공사 예정수요를 합쳐 재고 소진 시점과 협의 필요월을 봅니다.
           </p>
         </div>
-        <Button size="sm" onClick={openNew} disabled={companyId === 'all' || moduleOptions.length === 0}>
+        <Button size="sm" onClick={openNew} disabled={moduleOptions.length === 0}>
           <Plus className="h-3.5 w-3.5" />
           현장 수요
         </Button>
@@ -378,6 +394,26 @@ export default function ModuleDemandForecastPanel({ companyId, inventoryItems, m
             <DialogTitle>{editing ? '현장 수요 수정' : '현장 수요 등록'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
+            {companyId === 'all' && (
+              <div className="space-y-1.5">
+                <Label>법인 *</Label>
+                <Select
+                  value={form.companyId}
+                  onValueChange={(v) => {
+                    const nextCompanyId = v ?? '';
+                    const nextOption = moduleOptions.find((option) => option.companyId === nextCompanyId);
+                    setForm((p) => ({ ...p, companyId: nextCompanyId, moduleKey: nextOption?.key ?? '' }));
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="법인 선택" /></SelectTrigger>
+                  <SelectContent>
+                    {companies.map((company) => (
+                      <SelectItem key={company.company_id} value={company.company_id}>{company.company_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>현장명 *</Label>
@@ -394,7 +430,9 @@ export default function ModuleDemandForecastPanel({ companyId, inventoryItems, m
                 <Select value={form.moduleKey} onValueChange={(v) => setForm((p) => ({ ...p, moduleKey: v ?? '' }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {moduleOptions.map((option) => (
+                    {moduleOptions
+                      .filter((option) => companyId !== 'all' || option.companyId === form.companyId)
+                      .map((option) => (
                       <SelectItem key={option.key} value={option.key}>{option.label}</SelectItem>
                     ))}
                   </SelectContent>

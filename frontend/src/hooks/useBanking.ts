@@ -48,9 +48,10 @@ export function useAllBankLimitGroups() {
       });
 
       (banks ?? []).filter((b) => b.is_active).forEach((b) => {
-        const used = usedByBank[b.bank_id] ?? 0;
+        const rawUsed = usedByBank[b.bank_id] ?? 0;
+        const used = Math.min(rawUsed, b.lc_limit_usd);
         const available = Math.max(0, b.lc_limit_usd - used);
-        const usage_rate = b.lc_limit_usd > 0 ? (used / b.lc_limit_usd) * 100 : 0;
+        const usage_rate = b.lc_limit_usd > 0 ? Math.min(100, (used / b.lc_limit_usd) * 100) : 0;
         const row: BankLimitRow = {
           bank_id: b.bank_id,
           bank_name: b.bank_name,

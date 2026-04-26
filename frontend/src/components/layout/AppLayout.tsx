@@ -4,9 +4,9 @@ import FloatingMwEaCalculator from '@/components/common/FloatingMwEaCalculator';
 
 export default function AppLayout() {
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-screen min-h-0 flex-col">
       <TopNav />
-      <main className="flex-1 overflow-auto">
+      <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         <Outlet />
       </main>
       {/* 전역 MW↔장수 계산기 (모든 보호 페이지에서 우하단 플로팅) */}

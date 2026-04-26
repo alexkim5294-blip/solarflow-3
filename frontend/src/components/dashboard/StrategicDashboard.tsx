@@ -99,50 +99,44 @@ export default function StrategicDashboard({
         <ModuleSupplyOutlook forecast={forecast.data} turnover={turnover.data} manufacturers={manufacturers} />
       ) : null}
 
-      {/* 3. 재고 매트릭스 + 거래처별 매출/이익 */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        {inventory.loading || turnover.loading ? <LoadingSpinner /> :
-        inventory.error ? <SectionError msg={inventory.error} /> :
-        turnover.error ? <SectionError msg={turnover.error} /> :
-        inventory.data && turnover.data ? (
-          <ManufacturerMatrix inventory={inventory.data.items} matrix={turnover.data.matrix} manufacturers={manufacturers} />
-        ) : null}
+      {/* 3. 재고 매트릭스 */}
+      {inventory.loading || turnover.loading ? <LoadingSpinner /> :
+      inventory.error ? <SectionError msg={inventory.error} /> :
+      turnover.error ? <SectionError msg={turnover.error} /> :
+      inventory.data && turnover.data ? (
+        <ManufacturerMatrix inventory={inventory.data.items} matrix={turnover.data.matrix} manufacturers={manufacturers} />
+      ) : null}
 
-        {flags.showSales && outstanding.data && (
-          <CustomerMixPanel
-            customers={customerRows}
-            sales={sales.data || []}
-            products={products}
-            manufacturers={manufacturers}
-            showMargin={flags.showMargin}
-            showDetail={flags.showDetail}
-          />
-        )}
-      </div>
+      {flags.showSales && outstanding.data && (
+        <CustomerMixPanel
+          customers={customerRows}
+          sales={sales.data || []}
+          products={products}
+          manufacturers={manufacturers}
+          showMargin={flags.showMargin}
+          showDetail={flags.showDetail}
+        />
+      )}
 
       {turnover.data && forecast.data && (
         <ModuleMixPanel turnover={turnover.data} forecast={forecast.data} manufacturers={manufacturers} />
       )}
 
-      {/* 4. 매출·단가 차트 — 단가 추이는 보조지표로 축소 */}
-      {(flags.showSales || flags.showPrice) && (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.35fr_0.65fr]">
-          {flags.showSales && flags.showMargin && (
-            revenue.loading ? <LoadingSpinner /> : revenue.error ? (
-              <SectionError msg={revenue.error} />
-            ) : revenue.data ? (
-              <MonthlyRevenueChart data={revenue.data} />
-            ) : null
-          )}
+      {/* 4. 매출·단가 차트 */}
+      {flags.showSales && flags.showMargin && (
+        revenue.loading ? <LoadingSpinner /> : revenue.error ? (
+          <SectionError msg={revenue.error} />
+        ) : revenue.data ? (
+          <MonthlyRevenueChart data={revenue.data} />
+        ) : null
+      )}
 
-          {flags.showPrice && (
-            priceTrend.loading ? <LoadingSpinner /> : priceTrend.error ? (
-              <SectionError msg={priceTrend.error} />
-            ) : priceTrend.data ? (
-              <PriceTrendChart data={priceTrend.data} compact />
-            ) : null
-          )}
-        </div>
+      {flags.showPrice && (
+        priceTrend.loading ? <LoadingSpinner /> : priceTrend.error ? (
+          <SectionError msg={priceTrend.error} />
+        ) : priceTrend.data ? (
+          <PriceTrendChart data={priceTrend.data} />
+        ) : null
       )}
     </div>
   );

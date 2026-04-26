@@ -147,7 +147,7 @@ export default function CustomerMixPanel({
     .filter((row) => row.revenue > 0 || row.margin > 0)
     .sort((a, b) => b.revenue - a.revenue);
 
-  const visibleRows = showDetail ? rows.slice(0, 8) : rows.slice(0, 5);
+  const visibleRows = showDetail ? rows.slice(0, 6) : rows.slice(0, 3);
 
   return (
     <Card>
@@ -161,7 +161,7 @@ export default function CustomerMixPanel({
         {visibleRows.length === 0 ? (
           <p className="py-4 text-center text-sm text-muted-foreground">데이터 없음</p>
         ) : (
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
             {visibleRows.map((row, index) => (
               <div key={row.key} className="rounded-md border p-3">
                 <div className="mb-2 flex items-start justify-between gap-3">

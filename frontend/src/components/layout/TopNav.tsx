@@ -115,14 +115,17 @@ export default function TopNav() {
   );
 
   return (
-    <header className="h-14 shrink-0 border-b bg-background/95 flex items-center gap-2 px-4 z-40 shadow-[0_1px_0_rgba(0,0,0,0.02)] backdrop-blur supports-[backdrop-filter]:bg-background/85">
+    <header className="h-14 shrink-0 border-b bg-background/95 flex items-center gap-2 px-4 z-40 shadow-[0_1px_8px_rgba(15,23,42,0.04)] backdrop-blur supports-[backdrop-filter]:bg-background/90">
 
       {/* ① 로고 — 가용재고 홈으로 이동 */}
       <Link to="/inventory" className="flex h-9 shrink-0 items-center gap-2 rounded-md pr-1.5 mr-1 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/45">
-        <div className="flex size-7 items-center justify-center rounded-md border border-foreground/10 bg-foreground text-background shadow-sm">
-          <span className="text-[10px] font-semibold leading-none tracking-tight">SF</span>
+        <div className="relative flex size-8 items-center justify-center rounded-md border border-foreground/10 bg-foreground text-background shadow-sm">
+          <span className="text-[11px] font-semibold leading-none tracking-tight">SF</span>
+          <span className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full bg-emerald-400 ring-2 ring-background" />
         </div>
-        <span className="hidden text-sm font-semibold tracking-tight sm:block">SolarFlow</span>
+        <span className="hidden text-sm font-semibold tracking-tight sm:block">
+          Solar<span className="text-emerald-600">Flow</span>
+        </span>
       </Link>
 
       {/* ② 법인 선택 */}

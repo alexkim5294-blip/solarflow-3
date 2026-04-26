@@ -35,9 +35,9 @@ function recentMonthsRevenueKrw(revenue: MonthlyRevenue | null, nMonths: number)
 
 export default function StrategicSummaryCards({ summary, revenue, flags }: Props) {
   const baseCards = [
-    { key: 'available', label: '가용재고', value: `${summary.available_mw.toFixed(1)}MW`, icon: PackageCheck, color: 'text-emerald-600 bg-emerald-50', to: '/inventory' },
-    { key: 'incoming',  label: '미착품',   value: `${summary.incoming_mw.toFixed(1)}MW`,  icon: Truck,        color: 'text-amber-600 bg-amber-50',     to: '/inbound' },
-    { key: 'secured',   label: '총확보',   value: `${summary.secured_mw.toFixed(1)}MW`,   icon: Shield,       color: 'text-blue-600 bg-blue-50',       to: '/inventory' },
+    { key: 'available', label: '가용재고', value: `${summary.available_mw.toFixed(1)}MW`, icon: PackageCheck, color: 'text-emerald-600 bg-emerald-50', accent: 'bg-emerald-500', to: '/inventory' },
+    { key: 'incoming',  label: '미착품',   value: `${summary.incoming_mw.toFixed(1)}MW`,  icon: Truck,        color: 'text-amber-600 bg-amber-50',     accent: 'bg-amber-500',   to: '/inbound' },
+    { key: 'secured',   label: '총확보',   value: `${summary.secured_mw.toFixed(1)}MW`,   icon: Shield,       color: 'text-blue-600 bg-blue-50',       accent: 'bg-blue-500',    to: '/inventory' },
   ];
 
   const optionalCards: typeof baseCards = [];
@@ -50,6 +50,7 @@ export default function StrategicSummaryCards({ summary, revenue, flags }: Props
       value: formatKRW(sales3m),
       icon: Receipt,
       color: 'text-indigo-600 bg-indigo-50',
+      accent: 'bg-indigo-500',
       to: '/orders',
     });
   }
@@ -60,6 +61,7 @@ export default function StrategicSummaryCards({ summary, revenue, flags }: Props
       value: formatKRW(summary.outstanding_krw),
       icon: DollarSign,
       color: 'text-red-600 bg-red-50',
+      accent: 'bg-red-500',
       to: '/orders?tab=receipts',
     });
   }
@@ -76,16 +78,17 @@ export default function StrategicSummaryCards({ summary, revenue, flags }: Props
 
   return (
     <div className={`grid grid-cols-2 gap-3 lg:grid-cols-4 ${cols}`}>
-      {cards.map(({ key, label, value, icon: Icon, color, to }) => (
-        <Link key={key} to={to} className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg">
-          <Card className="transition-shadow group-hover:shadow-md group-hover:border-border/80 cursor-pointer">
+      {cards.map(({ key, label, value, icon: Icon, color, accent, to }) => (
+        <Link key={key} to={to} className="group block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Card className="relative cursor-pointer transition-all group-hover:-translate-y-0.5 group-hover:border-foreground/20 group-hover:shadow-[0_8px_28px_rgba(15,23,42,0.08)]">
+            <span className={`absolute inset-y-0 left-0 w-1 ${accent}`} />
             <CardContent className="flex items-center gap-3 pt-4 pb-4">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${color}`}>
+              <div className={`flex h-11 w-11 items-center justify-center rounded-md ${color}`}>
                 <Icon className="h-5 w-5" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">{label}</p>
-                <p className="text-base font-semibold">{value}</p>
+                <p className="text-lg font-semibold tracking-tight">{value}</p>
               </div>
             </CardContent>
           </Card>

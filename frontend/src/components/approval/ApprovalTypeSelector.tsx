@@ -10,12 +10,12 @@ interface Props {
 }
 
 const ICONS: Record<ApprovalType, React.ReactNode> = {
-  1: <Ship className="h-5 w-5" />,
-  2: <FileText className="h-5 w-5" />,
-  3: <Receipt className="h-5 w-5" />,
-  4: <Truck className="h-5 w-5" />,
-  5: <Wallet className="h-5 w-5" />,
-  6: <HardHat className="h-5 w-5" />,
+  1: <Ship className="h-4 w-4" />,
+  2: <FileText className="h-4 w-4" />,
+  3: <Receipt className="h-4 w-4" />,
+  4: <Truck className="h-4 w-4" />,
+  5: <Wallet className="h-4 w-4" />,
+  6: <HardHat className="h-4 w-4" />,
 };
 
 export default function ApprovalTypeSelector({ selected, onSelect }: Props) {
@@ -26,14 +26,16 @@ export default function ApprovalTypeSelector({ selected, onSelect }: Props) {
       {types.map((t) => (
         <Card
           key={t}
-          className={`cursor-pointer transition-all hover:shadow-md ${
-            selected === t ? 'ring-2 ring-primary shadow-md' : ''
+          className={`cursor-pointer transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-[0_8px_28px_rgba(15,23,42,0.08)] ${
+            selected === t ? 'border-foreground/30 shadow-[0_8px_28px_rgba(15,23,42,0.08)] ring-2 ring-primary/20' : ''
           }`}
           onClick={() => onSelect(t)}
         >
           <CardHeader className="p-4">
             <CardTitle className="flex items-center gap-2 text-sm">
-              {ICONS[t]}
+              <span className="flex size-8 items-center justify-center rounded-md bg-muted text-foreground">
+                {ICONS[t]}
+              </span>
               {APPROVAL_TYPE_LABEL[t]}
             </CardTitle>
             <CardDescription className="text-xs mt-1">

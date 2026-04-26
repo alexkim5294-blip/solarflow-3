@@ -31,6 +31,7 @@ export function PartnerCombobox({
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -38,6 +39,8 @@ export function PartnerCombobox({
   const filtered = search
     ? partners.filter((p) => p.partner_name.toLowerCase().includes(search.toLowerCase()))
     : partners;
+  const hasCreateAction = creatable && !creating;
+  const optionCount = filtered.length + (hasCreateAction ? 1 : 0);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -54,9 +57,22 @@ export function PartnerCombobox({
 
   useEffect(() => {
     if (open) {
+      setActiveIndex(0);
       setTimeout(() => searchRef.current?.focus(), 0);
     }
   }, [open]);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [search, creating]);
+
+  useEffect(() => {
+    if (optionCount === 0) {
+      setActiveIndex(0);
+      return;
+    }
+    if (activeIndex >= optionCount) setActiveIndex(optionCount - 1);
+  }, [activeIndex, optionCount]);
 
   function handleSelect(partnerId: string) {
     onChange(partnerId);
@@ -68,8 +84,34 @@ export function PartnerCombobox({
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Escape') {
+      e.preventDefault();
       setOpen(false);
       setSearch('');
+      setCreating(false);
+      return;
+    }
+    if (creating || optionCount === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex((idx) => (idx + 1) % optionCount);
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex((idx) => (idx - 1 + optionCount) % optionCount);
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIndex < filtered.length) {
+        handleSelect(filtered[activeIndex].partner_id);
+        return;
+      }
+      if (hasCreateAction) {
+        setCreating(true);
+        setNewName(search.trim());
+        setCreateError('');
+      }
     }
   }
 
@@ -108,6 +150,18 @@ export function PartnerCombobox({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            setOpen(true);
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            setOpen(false);
+            setSearch('');
+            setCreating(false);
+          }
+        }}
         aria-expanded={open}
         aria-invalid={error}
         className={cn(
@@ -141,13 +195,15 @@ export function PartnerCombobox({
             {filtered.length === 0 ? (
               <div className="px-3 py-2 text-sm text-muted-foreground">결과 없음</div>
             ) : (
-              filtered.map((p) => (
+              filtered.map((p, index) => (
                 <button
                   key={p.partner_id}
                   type="button"
+                  onMouseEnter={() => setActiveIndex(index)}
                   onClick={() => handleSelect(p.partner_id)}
                   className={cn(
                     'flex w-full items-center gap-2 px-2.5 py-1.5 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors',
+                    activeIndex === index && 'bg-accent text-accent-foreground',
                     value === p.partner_id && 'bg-accent/40',
                   )}
                 >
@@ -162,12 +218,16 @@ export function PartnerCombobox({
           {creatable && !creating && (
             <button
               type="button"
+              onMouseEnter={() => setActiveIndex(filtered.length)}
               onClick={() => {
                 setCreating(true);
                 setNewName(search.trim());
                 setCreateError('');
               }}
-              className="flex w-full items-center gap-2 border-t px-2.5 py-2 text-sm text-primary transition-colors hover:bg-accent"
+              className={cn(
+                'flex w-full items-center gap-2 border-t px-2.5 py-2 text-sm text-primary transition-colors hover:bg-accent',
+                activeIndex === filtered.length && 'bg-accent',
+              )}
             >
               <PlusIcon className="size-3.5" />
               신규 거래처 등록{search.trim() ? ` "${search.trim()}"` : ''}
@@ -180,7 +240,17 @@ export function PartnerCombobox({
                 autoFocus
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleCreate();
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setCreating(false);
+                    setCreateError('');
+                  }
+                }}
                 placeholder="거래처명 *"
                 className="w-full rounded border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:border-ring"
               />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { PartnerCombobox } from '@/components/common/PartnerCombobox';
 import { ConstructionSiteCombobox } from '@/components/common/ConstructionSiteCombobox';
-import { Lock } from 'lucide-react';
+import { Check, ChevronDown, Lock, Search } from 'lucide-react';
 import { cn, moduleLabel } from '@/lib/utils';
 import { useAppStore } from '@/stores/appStore';
 import { fetchWithAuth } from '@/lib/api';
@@ -21,7 +21,7 @@ import {
 } from '@/types/orders';
 import type { Product, Partner, ConstructionSite, Manufacturer } from '@/types/masters';
 import type { BLShipment, BLLineItem } from '@/types/inbound';
-import type { InventoryResponse } from '@/types/inventory';
+import type { InventoryItem, InventoryResponse } from '@/types/inventory';
 import { statusLabel } from '@/types/inbound';
 
 function Txt({ text, placeholder = '선택' }: { text: string; placeholder?: string }) {
@@ -56,6 +56,18 @@ type AvailabilityInfo = {
   incomingKw: number;
   stockEa: number;
   incomingEa: number;
+};
+
+type BlCostInfo = {
+  usdWp?: number;
+  krwWp?: number;
+  hasLine?: boolean;
+};
+
+type ProductInventoryOption = AvailabilityInfo & {
+  product: Product;
+  label: string;
+  searchText: string;
 };
 
 type PaymentDueMode = 'days' | 'next_month_end' | 'next_next_month_end' | 'manual';
@@ -189,17 +201,191 @@ function findPartnerByHint(partners: Partner[], hint?: string): Partner | undefi
   return fuzzyMatches.length === 1 ? fuzzyMatches[0] : undefined;
 }
 
+function ProductInventoryCombobox({
+  options,
+  value,
+  onChange,
+  disabled = false,
+  error = false,
+  placeholder = '품목 검색',
+}: {
+  options: ProductInventoryOption[];
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  error?: boolean;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const selected = options.find((o) => o.product.product_id === value);
+  const filtered = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return options;
+    return options.filter((o) => o.searchText.includes(needle));
+  }, [options, search]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch('');
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    setActiveIndex(0);
+    setTimeout(() => searchRef.current?.focus(), 0);
+  }, [open]);
+
+  useEffect(() => {
+    if (activeIndex >= filtered.length) setActiveIndex(Math.max(0, filtered.length - 1));
+  }, [activeIndex, filtered.length]);
+
+  function selectOption(option: ProductInventoryOption) {
+    onChange(option.product.product_id);
+    setOpen(false);
+    setSearch('');
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!open) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setOpen(false);
+      setSearch('');
+      return;
+    }
+    if (filtered.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex((idx) => (idx + 1) % filtered.length);
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex((idx) => (idx - 1 + filtered.length) % filtered.length);
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      selectOption(filtered[activeIndex] ?? filtered[0]);
+    }
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        aria-expanded={open}
+        aria-invalid={error}
+        onClick={() => !disabled && setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (disabled) return;
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            setOpen(true);
+          }
+          if (e.key === 'Escape') {
+            setOpen(false);
+            setSearch('');
+          }
+        }}
+        className={cn(
+          'flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-sm transition-colors',
+          'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60',
+          error && 'border-destructive ring-3 ring-destructive/20',
+          !selected && 'text-muted-foreground',
+        )}
+      >
+        <span className="flex-1 truncate text-left">{selected?.label ?? placeholder}</span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+      </button>
+
+      {open && !disabled && (
+        <div
+          className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-md"
+          onKeyDown={handleKeyDown}
+        >
+          <div className="flex items-center gap-2 border-b px-3 py-2">
+            <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <input
+              ref={searchRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="제조사, 규격, 품번, 모델명 검색"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            />
+          </div>
+          <div className="max-h-72 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-3 text-sm text-muted-foreground">가용 재고가 있는 품목이 없습니다.</div>
+            ) : (
+              filtered.map((option, idx) => {
+                const isActive = idx === activeIndex;
+                const isSelected = value === option.product.product_id;
+                return (
+                  <button
+                    key={option.product.product_id}
+                    type="button"
+                    onMouseEnter={() => setActiveIndex(idx)}
+                    onClick={() => selectOption(option)}
+                    className={cn(
+                      'flex w-full items-start gap-2 px-3 py-2 text-left text-sm transition-colors',
+                      isActive && 'bg-accent text-accent-foreground',
+                      isSelected && !isActive && 'bg-accent/40',
+                    )}
+                  >
+                    <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
+                      {isSelected && <Check className="h-3.5 w-3.5" />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{option.label}</span>
+                      <span className="mt-1 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
+                        <span>
+                          실재고 <b className="text-green-700">{formatCapacityAuto(option.stockKw)}</b>
+                          <span className="ml-1">{option.stockEa.toLocaleString('ko-KR')} EA</span>
+                        </span>
+                        <span>
+                          미착품 <b className="text-blue-700">{formatCapacityAuto(option.incomingKw)}</b>
+                          <span className="ml-1">{option.incomingEa.toLocaleString('ko-KR')} EA</span>
+                        </span>
+                      </span>
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function OrderForm({ open, onOpenChange, onSubmit, onPrefillCancel, editData, prefillData }: Props) {
   const selectedCompanyId = useAppStore((s) => s.selectedCompanyId);
+  const companies = useAppStore((s) => s.companies);
+  const loadCompanies = useAppStore((s) => s.loadCompanies);
   const [products, setProducts] = useState<Product[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [sites, setSites] = useState<ConstructionSite[]>([]);
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
-  const [inventoryInfo, setInventoryInfo] = useState<AvailabilityInfo | null>(null);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [formCompanyId, setFormCompanyId] = useState('');
   const [submitError, setSubmitError] = useState('');
   const [blId, setBlId] = useState('');
   const [bls, setBls] = useState<BLShipment[]>([]);
-  const [blCostMap, setBlCostMap] = useState<Map<string, { usdWp?: number; krwWp?: number }>>(new Map());
+  const [blCostMap, setBlCostMap] = useState<Map<string, BlCostInfo>>(new Map());
   const [resolvedPrefillCompanyId, setResolvedPrefillCompanyId] = useState<string | null>(null);
   // 천단위 표시용 display state
   const [qtyDisplay, setQtyDisplay] = useState('');
@@ -241,9 +427,76 @@ export default function OrderForm({ open, onOpenChange, onSubmit, onPrefillCance
     ? editData.company_id
     : null;
   const selectedCompanyValue = selectedCompanyId && selectedCompanyId !== 'all' ? selectedCompanyId : null;
+  const formCompanyValue = formCompanyId && formCompanyId !== 'all' ? formCompanyId : null;
   const effectiveCompanyId = editCompanyId || (isPrefill
     ? (prefillCompanyId || resolvedPrefillCompanyId || selectedCompanyValue)
-    : selectedCompanyValue);
+    : (formCompanyValue || selectedCompanyValue));
+  const effectiveCompanyName = effectiveCompanyId
+    ? (companies.find((company) => company.company_id === effectiveCompanyId)?.company_name ?? '—')
+    : '';
+  const inventoryByProductId = useMemo(() => {
+    const map = new Map<string, InventoryItem>();
+    inventoryItems.forEach((item) => map.set(item.product_id, item));
+    return map;
+  }, [inventoryItems]);
+  const productInventoryOptions = useMemo<ProductInventoryOption[]>(() => (
+    products
+      .map((product) => {
+        const item = inventoryByProductId.get(product.product_id);
+        const stockKw = item?.available_kw ?? 0;
+        const incomingKw = item?.available_incoming_kw ?? 0;
+        const specWp = product.spec_wp ?? item?.spec_wp;
+        const label = productOptionText(product);
+        return {
+          product,
+          label,
+          searchText: [
+            label,
+            product.product_code,
+            product.product_name,
+            productModuleText(product),
+            String(product.spec_wp ?? ''),
+            product.manufacturer_name ?? '',
+            product.manufacturers?.short_name ?? '',
+            product.manufacturers?.name_kr ?? '',
+            product.manufacturers?.name_en ?? '',
+          ].join(' ').toLowerCase(),
+          stockKw,
+          incomingKw,
+          stockEa: eaFromKw(stockKw, specWp),
+          incomingEa: eaFromKw(incomingKw, specWp),
+        };
+      })
+      .filter((option) => (
+        isPrefill ||
+        !!editData ||
+        option.product.product_id === selectedProductId ||
+        option.stockKw > 0 ||
+        option.incomingKw > 0
+      ))
+  ), [products, inventoryByProductId, isPrefill, editData, selectedProductId, manufacturers]);
+  const selectedInventoryOption = productInventoryOptions.find((option) => option.product.product_id === selectedProductId);
+  const inventoryInfo: AvailabilityInfo | null = selectedInventoryOption
+    ? {
+      stockKw: selectedInventoryOption.stockKw,
+      incomingKw: selectedInventoryOption.incomingKw,
+      stockEa: selectedInventoryOption.stockEa,
+      incomingEa: selectedInventoryOption.incomingEa,
+    }
+    : null;
+  const currentSourceKw = fulfillmentSource === 'incoming'
+    ? inventoryInfo?.incomingKw ?? 0
+    : inventoryInfo?.stockKw ?? 0;
+  const currentSourceEa = fulfillmentSource === 'incoming'
+    ? inventoryInfo?.incomingEa ?? 0
+    : inventoryInfo?.stockEa ?? 0;
+  const sourceBls = useMemo(() => {
+    if (!selectedProductId || !fulfillmentSource) return [];
+    const allowedStatuses = fulfillmentSource === 'incoming'
+      ? ['shipping', 'arrived', 'customs']
+      : ['completed', 'erp_done'];
+    return bls.filter((bl) => allowedStatuses.includes(bl.status) && blCostMap.get(bl.bl_id)?.hasLine);
+  }, [bls, blCostMap, fulfillmentSource, selectedProductId]);
   const prefillResetKey = prefillData
     ? [
       prefillData.alloc_id,
@@ -274,6 +527,7 @@ export default function OrderForm({ open, onOpenChange, onSubmit, onPrefillCance
   }, [open, isPrefill, prefillData?.alloc_id, prefillCompanyId]);
 
   useEffect(() => {
+    void loadCompanies();
     fetchWithAuth<Product[]>('/api/v1/products')
       .then((list) => setProducts(list.filter((p) => p.is_active))).catch(() => {});
     fetchWithAuth<Manufacturer[]>('/api/v1/manufacturers')
@@ -287,13 +541,32 @@ export default function OrderForm({ open, onOpenChange, onSubmit, onPrefillCance
     } else {
       setSites([]);
     }
+  }, [effectiveCompanyId, loadCompanies]);
+
+  useEffect(() => {
+    if (!effectiveCompanyId || effectiveCompanyId === 'all') {
+      setInventoryItems([]);
+      return;
+    }
+    let cancelled = false;
+    fetchWithAuth<InventoryResponse>('/api/v1/calc/inventory', {
+      method: 'POST',
+      body: JSON.stringify({ company_id: effectiveCompanyId }),
+    })
+      .then((result) => {
+        if (!cancelled) setInventoryItems(result.items ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setInventoryItems([]);
+      });
+    return () => { cancelled = true; };
   }, [effectiveCompanyId]);
 
   // 품번 선택 시 해당 제조사의 입고완료 BL 목록 로드
   useEffect(() => {
     if (!selectedProduct?.manufacturer_id) { setBls([]); return; }
     fetchWithAuth<BLShipment[]>(`/api/v1/bls?manufacturer_id=${selectedProduct.manufacturer_id}`)
-      .then((list) => setBls((list ?? []).filter((b) => ['completed', 'erp_done', 'arrived', 'customs'].includes(b.status))))
+      .then((list) => setBls((list ?? []).filter((b) => ['shipping', 'arrived', 'customs', 'completed', 'erp_done'].includes(b.status))))
       .catch(() => setBls([]));
   }, [selectedProduct?.manufacturer_id]);
 
@@ -308,66 +581,51 @@ export default function OrderForm({ open, onOpenChange, onSubmit, onPrefillCance
     Promise.all(
       bls.map((bl) =>
         fetchWithAuth<BLLineItem[]>(`/api/v1/bls/${bl.bl_id}/lines`)
-          .then((lines): [string, { usdWp?: number; krwWp?: number }] => {
+          .then((lines): [string, BlCostInfo] => {
             const line = lines.find((l) => l.product_id === selectedProductId);
             const usdWp = line?.unit_price_usd_wp;
             const krwWp = line?.unit_price_krw_wp ?? (
               usdWp != null && bl.exchange_rate ? usdWp * bl.exchange_rate : undefined
             );
-            return [bl.bl_id, { usdWp, krwWp }];
+            return [bl.bl_id, { usdWp, krwWp, hasLine: !!line }];
           })
-          .catch((): [string, { usdWp?: number; krwWp?: number }] => [bl.bl_id, {}]),
+          .catch((): [string, BlCostInfo] => [bl.bl_id, { hasLine: false }]),
       ),
     ).then((entries) => {
       if (cancelled) return;
-      setBlCostMap(new Map(entries.filter(([, cost]) => cost.usdWp != null || cost.krwWp != null)));
+      setBlCostMap(new Map(entries.filter(([, cost]) => cost.hasLine)));
     });
 
     return () => { cancelled = true; };
   }, [bls, selectedProductId]);
 
-  // 선택 품목의 충당 가능량 표시
+  // 예약 전환이 미착품으로 넘어왔어도 현재 실재고가 충분하면 실재고를 우선합니다.
   useEffect(() => {
-    if (!effectiveCompanyId || !selectedProductId) { setInventoryInfo(null); return; }
-    fetchWithAuth<InventoryResponse>('/api/v1/calc/inventory', {
-      method: 'POST',
-      body: JSON.stringify({ company_id: effectiveCompanyId }),
-    }).then((result) => {
-      const item = result.items.find((it) => it.product_id === selectedProductId);
-      const stockKw = item?.available_kw ?? 0;
-      const incomingKw = item?.available_incoming_kw ?? 0;
-      const specWp = selectedProduct?.spec_wp ?? item?.spec_wp;
-      setInventoryInfo({
-        stockKw,
-        incomingKw,
-        stockEa: eaFromKw(stockKw, specWp),
-        incomingEa: eaFromKw(incomingKw, specWp),
-      });
-    }).catch(() => setInventoryInfo(null));
-  }, [effectiveCompanyId, selectedProductId, selectedProduct?.spec_wp]);
+    if (!open || !isPrefill || !selectedProductId || fulfillmentSource !== 'incoming' || capacityKw <= 0 || !inventoryInfo) return;
+    if (inventoryInfo.stockKw + 0.001 >= capacityKw) {
+      setValue('fulfillment_source', 'stock', { shouldDirty: true });
+    }
+  }, [open, isPrefill, selectedProductId, fulfillmentSource, capacityKw, inventoryInfo, setValue]);
 
-  // 예약/기존 수주가 미착품으로 들어왔어도 현재 실재고가 충분하면 실재고를 우선합니다.
   useEffect(() => {
-    if (!open || !effectiveCompanyId || !selectedProductId || fulfillmentSource !== 'incoming' || capacityKw <= 0) return;
-    let cancelled = false;
-    fetchWithAuth<InventoryResponse>('/api/v1/calc/inventory', {
-      method: 'POST',
-      body: JSON.stringify({ company_id: effectiveCompanyId }),
-    }).then((result) => {
-      if (cancelled) return;
-      const item = result.items.find((it) => it.product_id === selectedProductId);
-      const stockKw = item?.available_kw ?? 0;
-      if (stockKw + 0.001 >= capacityKw) {
-        setValue('fulfillment_source', 'stock', { shouldDirty: true });
-      }
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [open, effectiveCompanyId, selectedProductId, fulfillmentSource, capacityKw, setValue]);
+    if (!open || isPrefill || editData || !selectedProductId || fulfillmentSource || !inventoryInfo) return;
+    if (inventoryInfo.stockKw > 0) {
+      setValue('fulfillment_source', 'stock', { shouldDirty: true, shouldValidate: true });
+    } else if (inventoryInfo.incomingKw > 0) {
+      setValue('fulfillment_source', 'incoming', { shouldDirty: true, shouldValidate: true });
+    }
+  }, [open, isPrefill, editData, selectedProductId, fulfillmentSource, inventoryInfo, setValue]);
+
+  useEffect(() => {
+    if (!open || editData || isPrefill) return;
+    setBlId('');
+  }, [open, editData, isPrefill, selectedProductId, fulfillmentSource]);
 
   useEffect(() => {
     if (open) {
       setSubmitError('');
       if (editData) {
+        setFormCompanyId(editData.company_id ?? '');
         reset({
           order_number: editData.order_number ?? '',
           customer_id: editData.customer_id,
@@ -395,6 +653,7 @@ export default function OrderForm({ open, onOpenChange, onSubmit, onPrefillCance
         setPaymentDueMode(paymentModeFromTerms(editData.payment_terms));
         setCreditDaysDisplay(creditDaysFromTerms(editData.payment_terms));
       } else if (prefillData) {
+        setFormCompanyId(prefillCompanyId ?? '');
         // 가용재고 배정에서 넘어온 경우 — 품목/수량/관리구분/충당소스/발주번호 자동 입력
         const today = new Date().toISOString().slice(0, 10);
         reset({
@@ -417,6 +676,7 @@ export default function OrderForm({ open, onOpenChange, onSubmit, onPrefillCance
         setPaymentDueMode('days');
         setCreditDaysDisplay('');
       } else {
+        setFormCompanyId(selectedCompanyValue ?? '');
         const today = new Date().toISOString().slice(0, 10);
         reset({
           order_number: '', customer_id: '', order_date: today,
@@ -432,7 +692,7 @@ export default function OrderForm({ open, onOpenChange, onSubmit, onPrefillCance
         setCreditDaysDisplay('');
       }
     }
-  }, [open, editData, prefillResetKey, reset]);
+  }, [open, editData, prefillResetKey, prefillCompanyId, reset, selectedCompanyValue]);
 
   // prefill: 거래처 이름 → partner_id 자동 매칭 (partners 로드 완료 후)
   useEffect(() => {
@@ -491,8 +751,23 @@ export default function OrderForm({ open, onOpenChange, onSubmit, onPrefillCance
       }
     }
 
-    if (fulfillmentSourceForSave === 'stock' && selectedProduct && bls.length > 0 && !blId) {
-      setSubmitError('B/L 연결은 실재고 원가 추적을 위해 필수입니다.');
+    if (!editData && selectedProduct && capacityKw > 0) {
+      const availableKw = fulfillmentSourceForSave === 'incoming'
+        ? inventoryInfo?.incomingKw ?? 0
+        : inventoryInfo?.stockKw ?? 0;
+      if (availableKw + 0.001 < capacityKw) {
+        setSubmitError(
+          `${FULFILLMENT_SOURCE_LABEL[fulfillmentSourceForSave as FulfillmentSource] ?? '선택한 충당소스'} 가용량이 부족합니다. ` +
+          `필요: ${formatCapacityAuto(capacityKw)} / 가용: ${formatCapacityAuto(availableKw)}`,
+        );
+        return;
+      }
+    }
+
+    if (selectedProduct && ['stock', 'incoming'].includes(fulfillmentSourceForSave) && !blId) {
+      setSubmitError(sourceBls.length === 0
+        ? '선택한 품목과 충당소스에 연결 가능한 B/L이 없습니다. 입고/선적 데이터를 먼저 확인해주세요.'
+        : 'B/L 연결은 원가 추적을 위해 필수입니다.');
       return;
     }
 
@@ -540,6 +815,208 @@ export default function OrderForm({ open, onOpenChange, onSubmit, onPrefillCance
             </div>
           )}
           {submitError && <div className="rounded-md bg-destructive/10 border border-destructive/30 px-4 py-3 text-sm text-destructive">{submitError}</div>}
+          {!isPrefill && (
+            <div className="space-y-3 rounded-md border bg-slate-50/70 p-3">
+              <div>
+                <Label className="font-medium">재고 기준 선택</Label>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  수주 신규등록은 품목을 먼저 선택한 뒤 가용 실재고와 가용 미착품을 확인합니다.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>판매법인 *</Label>
+                {editData ? (
+                  <div className="flex h-9 items-center gap-2 rounded-md border border-input bg-muted/30 px-3 text-sm select-none">
+                    <Lock className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                    <span className="truncate">{effectiveCompanyName || '—'}</span>
+                  </div>
+                ) : (
+                  <Select
+                    value={effectiveCompanyId ?? ''}
+                    onValueChange={(v) => {
+                      setFormCompanyId(v ?? '');
+                      setValue('product_id', '', { shouldDirty: true, shouldValidate: true });
+                      setValue('fulfillment_source', '', { shouldDirty: true, shouldValidate: true });
+                      setValue('quantity', '' as unknown as number, { shouldDirty: true, shouldValidate: true });
+                      setQtyDisplay('');
+                      setBlId('');
+                    }}
+                  >
+                    <SelectTrigger>
+                      <Txt text={effectiveCompanyName} placeholder="법인 선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {companies.map((company) => (
+                        <SelectItem key={company.company_id} value={company.company_id}>
+                          {company.company_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {!effectiveCompanyId && (
+                  <p className="text-[11px] text-amber-700">먼저 판매법인을 선택하면 해당 법인의 가용재고만 표시됩니다.</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label>충당소스 *</Label>
+                  <Select
+                    value={watch('fulfillment_source') ?? ''}
+                    disabled={!effectiveCompanyId}
+                    onValueChange={(v) => setValue('fulfillment_source', v ?? '', { shouldValidate: true, shouldDirty: true })}
+                  >
+                    <SelectTrigger><Txt text={FULFILLMENT_SOURCE_LABEL[watch('fulfillment_source') as FulfillmentSource] ?? ''} /></SelectTrigger>
+                    <SelectContent>
+                      {(Object.entries(FULFILLMENT_SOURCE_LABEL) as [FulfillmentSource, string][]).map(([k, v]) => (
+                        <SelectItem key={k} value={k}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.fulfillment_source && <p className="text-xs text-destructive">{errors.fulfillment_source.message}</p>}
+                </div>
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>품번/규격 검색 *</Label>
+                  <ProductInventoryCombobox
+                    options={productInventoryOptions}
+                    value={watch('product_id') ?? ''}
+                    onChange={(v) => {
+                      setValue('product_id', v, { shouldValidate: true, shouldDirty: true });
+                      setBlId('');
+                    }}
+                    disabled={!effectiveCompanyId}
+                    error={!!errors.product_id}
+                    placeholder={effectiveCompanyId ? '제조사, 규격, 품번, 모델명으로 검색' : '법인 선택 후 품목 검색'}
+                  />
+                  {errors.product_id && <p className="text-xs text-destructive">{errors.product_id.message}</p>}
+                </div>
+              </div>
+
+              {selectedProduct ? (
+                <>
+                  <div className="grid grid-cols-1 gap-2 rounded-md border bg-background px-3 py-2 text-xs sm:grid-cols-2">
+                    <div>
+                      <div className="text-muted-foreground">가용 실재고</div>
+                      <div className="font-semibold text-green-700">{formatCapacityAuto(inventoryInfo?.stockKw ?? 0)}</div>
+                      <div className="text-[10px] text-muted-foreground">{(inventoryInfo?.stockEa ?? 0).toLocaleString('ko-KR')} EA</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">가용 미착품</div>
+                      <div className="font-semibold text-blue-700">{formatCapacityAuto(inventoryInfo?.incomingKw ?? 0)}</div>
+                      <div className="text-[10px] text-muted-foreground">{(inventoryInfo?.incomingEa ?? 0).toLocaleString('ko-KR')} EA</div>
+                    </div>
+                    {fulfillmentSource && (
+                      <div className="sm:col-span-2 text-[11px] text-muted-foreground">
+                        선택 기준 가용: <b>{formatCapacityAuto(currentSourceKw)}</b> · {currentSourceEa.toLocaleString('ko-KR')} EA
+                      </div>
+                    )}
+                  </div>
+
+                  {fulfillmentSource && (
+                    <div className="space-y-1.5">
+                      <Label>
+                        B/L 연결
+                        <span className="ml-1 text-xs font-normal text-muted-foreground">(원가 추적용, 필수)</span>
+                      </Label>
+                      <Select value={blId || '_none'} onValueChange={(v) => setBlId(v === '_none' ? '' : (v ?? ''))}>
+                        <SelectTrigger className="w-full">
+                          <span className={`flex flex-1 text-left truncate ${blId ? '' : 'text-muted-foreground'}`}>
+                            {blId ? (() => {
+                              const bl = bls.find(b => b.bl_id === blId);
+                              if (!bl) return blId.slice(0, 8);
+                              const date = bl.actual_arrival?.slice(0, 10) ?? bl.eta?.slice(0, 10) ?? '—';
+                              const stKo = statusLabel(bl.inbound_type, bl.status);
+                              return `${productModuleText(selectedProduct)} | ${bl.bl_number} | ${date} | ${stKo}`;
+                            })() : (sourceBls.length ? 'B/L 선택' : '연결 가능한 B/L 없음')}
+                          </span>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {sourceBls.map((b) => {
+                            const date = b.actual_arrival?.slice(0, 10) ?? b.eta?.slice(0, 10) ?? '—';
+                            const stKo = statusLabel(b.inbound_type, b.status);
+                            const isCompleted = ['completed', 'erp_done'].includes(b.status);
+                            return (
+                              <SelectItem key={b.bl_id} value={b.bl_id}>
+                                <span className={`text-xs font-medium mr-1.5 ${isCompleted ? 'text-green-600' : 'text-blue-600'}`}>[{stKo}]</span>
+                                {productModuleText(selectedProduct)} | {b.bl_number} | {date}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                      {sourceBls.length === 0 && (
+                        <p className="text-[11px] text-amber-700">선택한 품목과 충당소스에 맞는 B/L 후보가 없습니다.</p>
+                      )}
+                      {blId && (() => {
+                        const bl = bls.find(b => b.bl_id === blId);
+                        if (!bl) return null;
+                        const cost = blCostMap.get(bl.bl_id);
+                        return (
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 rounded border bg-blue-50 px-3 py-1.5 text-[10px] text-blue-700">
+                            <span className="font-semibold">원화원가: {formatKrwWp(cost?.krwWp)}</span>
+                            <span>수입단가: {formatUsdWp(cost?.usdWp)}</span>
+                            <span>항구: {bl.port ?? '—'}</span>
+                            <span>포워더: {bl.forwarder ?? '—'}</span>
+                            <span>ETA: {bl.eta?.slice(0, 10) ?? '—'}</span>
+                            {bl.exchange_rate && <span>환율: {bl.exchange_rate.toLocaleString('ko-KR')}</span>}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <Label>유상 수량 *</Label>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        disabled={!selectedProduct}
+                        value={qtyDisplay}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^0-9]/g, '');
+                          const num = raw ? parseInt(raw, 10) : undefined;
+                          setQtyDisplay(num !== undefined ? num.toLocaleString('ko-KR') : '');
+                          setValue('quantity', (num ?? '') as unknown as number, { shouldDirty: true, shouldValidate: true });
+                        }}
+                        placeholder="0"
+                      />
+                      {spareQty > 0 && (
+                        <p className="text-[10px] text-orange-600">
+                          무상 {spareQty.toLocaleString('ko-KR')} EA 별도 · 총 공급 {(Number(quantity) + spareQty).toLocaleString('ko-KR')} EA
+                        </p>
+                      )}
+                      {errors.quantity && <p className="text-xs text-destructive">{errors.quantity.message}</p>}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>용량</Label>
+                      <div className="flex h-9 items-center justify-end rounded-md border bg-background px-3 text-sm font-medium tabular-nums text-slate-800">
+                        {selectedProduct ? formatCapacityAuto(capacityKw) : '품목 선택 후 자동 계산'}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">유상 수량 기준 자동 계산</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Wp단가 *</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        disabled={!selectedProduct}
+                        {...register('unit_price_wp')}
+                      />
+                      {errors.unit_price_wp && <p className="text-xs text-destructive">{errors.unit_price_wp.message}</p>}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-md border border-dashed bg-background px-3 py-4 text-center text-sm text-muted-foreground">
+                  품목을 선택하면 가용 실재고, 가용 미착품, B/L 후보와 수량 입력이 열립니다.
+                </div>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>발주번호</Label>
@@ -552,6 +1029,57 @@ export default function OrderForm({ open, onOpenChange, onSubmit, onPrefillCance
             </div>
           </div>
 
+          {!isPrefill && (
+            <>
+              <div className="space-y-1.5">
+                <Label>거래처 *</Label>
+                <PartnerCombobox
+                  partners={partners}
+                  value={watch('customer_id') ?? ''}
+                  onChange={(v) => setValue('customer_id', v, { shouldValidate: true, shouldDirty: true })}
+                  error={!!errors.customer_id}
+                  creatable
+                  createType="customer"
+                  onCreated={(partner) => setPartners((prev) => [...prev, partner])}
+                />
+                {errors.customer_id && <p className="text-xs text-destructive">{errors.customer_id.message}</p>}
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>접수방법 *</Label>
+                  <Select value={watch('receipt_method') ?? ''} onValueChange={(v) => setValue('receipt_method', v ?? '', { shouldValidate: true, shouldDirty: true })}>
+                    <SelectTrigger>
+                      <Txt text={RECEIPT_METHOD_LABEL[watch('receipt_method') as ReceiptMethod] ?? ''} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.entries(RECEIPT_METHOD_LABEL) as [ReceiptMethod, string][]).map(([k, v]) => (
+                        <SelectItem key={k} value={k}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.receipt_method && <p className="text-xs text-destructive">{errors.receipt_method.message}</p>}
+                </div>
+                <div className="space-y-1.5">
+                  <Label>관리구분 *</Label>
+                  <Select value={watch('management_category') ?? ''} onValueChange={(v) => setValue('management_category', v ?? '', { shouldValidate: true, shouldDirty: true })}>
+                    <SelectTrigger>
+                      <Txt text={MANAGEMENT_CATEGORY_LABEL[watch('management_category') as ManagementCategory] ?? ''} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.entries(MANAGEMENT_CATEGORY_LABEL) as [ManagementCategory, string][]).map(([k, v]) => (
+                        <SelectItem key={k} value={k}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.management_category && <p className="text-xs text-destructive">{errors.management_category.message}</p>}
+                </div>
+              </div>
+            </>
+          )}
+
+          {isPrefill && (
+            <>
           <div className="space-y-1.5">
             <Label className="flex items-center gap-1.5">
               거래처 *
@@ -791,6 +1319,9 @@ export default function OrderForm({ open, onOpenChange, onSubmit, onPrefillCance
               {errors.unit_price_wp && <p className="text-xs text-destructive">{errors.unit_price_wp.message}</p>}
             </div>
           </div>
+
+            </>
+          )}
 
           {/* 공사현장 선택 */}
           <div className="space-y-1.5">

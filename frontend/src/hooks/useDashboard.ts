@@ -154,6 +154,7 @@ export function useDashboard(companyId: string | null, userRole: string) {
   const [incoming, setIncoming] = useState<DashboardSectionState<BLShipment[]>>(makeSectionState());
   const [orderBacklog, setOrderBacklog] = useState<DashboardSectionState<Order[]>>(makeSectionState());
   const [outstanding, setOutstanding] = useState<DashboardSectionState<CustomerAnalysis>>(makeSectionState());
+  const [sales, setSales] = useState<DashboardSectionState<SaleListItem[]>>(makeSectionState([]));
   const [longTermWarning, setLongTermWarning] = useState(0);
   const [longTermCritical, setLongTermCritical] = useState(0);
 
@@ -166,6 +167,7 @@ export function useDashboard(companyId: string | null, userRole: string) {
     setSummary((s) => ({ ...s, loading: true, error: null }));
     setRevenue((s) => ({ ...s, loading: true, error: null }));
     setPriceTrend((s) => ({ ...s, loading: true, error: null }));
+    setSales((s) => ({ ...s, loading: true, error: null }));
     setAlerts((s) => ({ ...s, loading: true, error: null }));
     setCompanySummary((s) => ({ ...s, loading: true, error: null }));
     if (isManager) {
@@ -219,8 +221,10 @@ export function useDashboard(companyId: string | null, userRole: string) {
     // 1: Sales -> monthly revenue
     const salesResult = results[1];
     if (salesResult.status === 'fulfilled') {
+      setSales({ data: salesResult.value, loading: false, error: null });
       setRevenue({ data: salesToMonthlyRevenue(salesResult.value), loading: false, error: null });
     } else {
+      setSales({ data: null, loading: false, error: '매출 데이터 조회 실패' });
       setRevenue({ data: null, loading: false, error: '매출 데이터 조회 실패' });
     }
 
@@ -308,7 +312,7 @@ export function useDashboard(companyId: string | null, userRole: string) {
 
   return {
     summary, revenue, priceTrend, alerts, companySummary,
-    incoming, orderBacklog, outstanding,
+    incoming, orderBacklog, outstanding, sales,
     longTermWarning, longTermCritical,
     reload: load,
   };

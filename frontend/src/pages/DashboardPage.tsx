@@ -9,7 +9,7 @@ import { usePermission } from '@/hooks/usePermission';
 import StrategicDashboard from '@/components/dashboard/StrategicDashboard';
 import { fetchWithAuth } from '@/lib/api';
 import { sortManufacturers } from '@/lib/manufacturerPriority';
-import type { Manufacturer } from '@/types/masters';
+import type { Manufacturer, Product } from '@/types/masters';
 import {
   canAccessMenu, hasFeature, getDashboardType,
   ROLE_LABELS, type Role,
@@ -41,6 +41,7 @@ export default function DashboardPage() {
   const [searchParams] = useSearchParams();
   const realPerm = usePermission();
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
 
   // [DEV 전용] ?role= 오버라이드
   const overrideRoleParam = searchParams.get('role');
@@ -63,7 +64,7 @@ export default function DashboardPage() {
   const userRole = role || 'viewer';
 
   const {
-    summary, revenue, priceTrend, outstanding,
+    summary, revenue, priceTrend, sales, outstanding,
     longTermWarning, longTermCritical,
   } = useDashboard(selectedCompanyId, userRole);
 
@@ -74,6 +75,9 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchWithAuth<Manufacturer[]>('/api/v1/manufacturers')
       .then((list) => setManufacturers(sortManufacturers(list.filter((m) => m.is_active))))
+      .catch(() => {});
+    fetchWithAuth<Product[]>('/api/v1/products')
+      .then((list) => setProducts(list.filter((p) => p.is_active)))
       .catch(() => {});
   }, []);
 
@@ -102,8 +106,10 @@ export default function DashboardPage() {
         inventory={{ data: inventory.data, loading: inventory.loading, error: inventory.error }}
         turnover={{ data: turnover.data, loading: turnover.loading, error: turnover.error }}
         forecast={{ data: forecast.data, loading: forecast.loading, error: forecast.error }}
+        sales={sales}
         outstanding={outstanding}
         manufacturers={manufacturers}
+        products={products}
         longTermWarning={longTermWarning}
         longTermCritical={longTermCritical}
         flags={{ showPrice, showMargin, showSales, showDetail, showReceivable, showLcLimit }}

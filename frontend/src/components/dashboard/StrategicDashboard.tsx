@@ -21,7 +21,7 @@ import StrategicSummaryCards from './StrategicSummaryCards';
 import MonthlyRevenueChart from './MonthlyRevenueChart';
 import PriceTrendChart from './PriceTrendChart';
 import ManufacturerMatrix from './ManufacturerMatrix';
-import CustomerRevenueTable from './CustomerRevenueTable';
+import CustomerMixPanel from './CustomerMixPanel';
 import ModuleSupplyOutlook from './ModuleSupplyOutlook';
 import ModuleMixPanel from './ModuleMixPanel';
 import type {
@@ -29,8 +29,9 @@ import type {
 } from '@/types/dashboard';
 import type { ForecastResponse, InventoryResponse } from '@/types/inventory';
 import type { TurnoverResponse } from '@/types/turnover';
+import type { SaleListItem } from '@/types/outbound';
 import type { CustomerAnalysis } from '@/hooks/useDashboard';
-import type { Manufacturer } from '@/types/masters';
+import type { Manufacturer, Product } from '@/types/masters';
 
 interface StrategicFlags {
   showPrice: boolean;      // 단가/재고금액
@@ -48,8 +49,10 @@ interface Props {
   inventory: { data: InventoryResponse | null; loading: boolean; error: string | null };
   turnover: { data: TurnoverResponse | null; loading: boolean; error: string | null };
   forecast: { data: ForecastResponse | null; loading: boolean; error: string | null };
+  sales: DashboardSectionState<SaleListItem[]>;
   outstanding: DashboardSectionState<CustomerAnalysis>;
   manufacturers: Manufacturer[];
+  products: Product[];
   longTermWarning: number;
   longTermCritical: number;
   flags: StrategicFlags;
@@ -61,7 +64,7 @@ function SectionError({ msg }: { msg: string }) {
 
 export default function StrategicDashboard({
   summary, revenue, priceTrend, inventory, turnover, forecast, outstanding,
-  manufacturers, longTermWarning, longTermCritical, flags,
+  sales, manufacturers, products, longTermWarning, longTermCritical, flags,
 }: Props) {
   void longTermWarning;
   void longTermCritical;
@@ -106,8 +109,11 @@ export default function StrategicDashboard({
         ) : null}
 
         {flags.showSales && outstanding.data && (
-          <CustomerRevenueTable
+          <CustomerMixPanel
             customers={customerRows}
+            sales={sales.data || []}
+            products={products}
+            manufacturers={manufacturers}
             showMargin={flags.showMargin}
             showDetail={flags.showDetail}
           />

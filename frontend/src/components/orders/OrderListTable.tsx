@@ -86,6 +86,11 @@ export default function OrderListTable({ items, onSelect, onNew }: Props) {
                   <div className="text-[10px] text-muted-foreground mt-1">
                     납기: {o.delivery_due ? formatDate(o.delivery_due) : '—'}
                   </div>
+                  {(o.payment_terms || o.deposit_rate != null) && (
+                    <div className="text-[10px] text-muted-foreground mt-0.5 truncate max-w-[180px]">
+                      결제: {o.payment_terms || `현금/선수금 ${o.deposit_rate}%`}
+                    </div>
+                  )}
                   {o.site_name && (
                     <div className="text-[10px] text-muted-foreground mt-0.5 truncate max-w-[160px]">
                       현장: {o.site_name}

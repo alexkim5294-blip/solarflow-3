@@ -61,6 +61,84 @@ func (h *OutboundHandler) fetchBLItems(outboundID string) []model.OutboundBLItem
 	return items
 }
 
+type outboundOrderProgressRow struct {
+	Quantity int    `json:"quantity"`
+	Status   string `json:"status"`
+}
+
+type outboundQuantityRow struct {
+	Quantity int `json:"quantity"`
+}
+
+func (h *OutboundHandler) recalculateOrderProgress(orderID string) error {
+	if orderID == "" {
+		return nil
+	}
+
+	orderData, _, err := h.DB.From("orders").
+		Select("quantity, status", "exact", false).
+		Eq("order_id", orderID).
+		Execute()
+	if err != nil {
+		return err
+	}
+
+	var orders []outboundOrderProgressRow
+	if err := json.Unmarshal(orderData, &orders); err != nil {
+		return err
+	}
+	if len(orders) == 0 || orders[0].Status == "cancelled" {
+		return nil
+	}
+
+	outboundData, _, err := h.DB.From("outbounds").
+		Select("quantity", "exact", false).
+		Eq("order_id", orderID).
+		Eq("status", "active").
+		Execute()
+	if err != nil {
+		return err
+	}
+
+	var outbounds []outboundQuantityRow
+	if err := json.Unmarshal(outboundData, &outbounds); err != nil {
+		return err
+	}
+
+	shippedQty := 0
+	for _, ob := range outbounds {
+		shippedQty += ob.Quantity
+	}
+	remainingQty := orders[0].Quantity - shippedQty
+	if remainingQty < 0 {
+		remainingQty = 0
+	}
+
+	status := "received"
+	if shippedQty > 0 && remainingQty > 0 {
+		status = "partial"
+	} else if shippedQty > 0 && remainingQty == 0 {
+		status = "completed"
+	}
+
+	_, _, err = h.DB.From("orders").
+		Update(map[string]interface{}{
+			"shipped_qty":   shippedQty,
+			"remaining_qty": remainingQty,
+			"status":        status,
+		}, "", "").
+		Eq("order_id", orderID).
+		Execute()
+	return err
+}
+
+func outboundOrderIDString(orderID *string) string {
+	if orderID == nil {
+		return ""
+	}
+	return *orderID
+}
+
 // List — GET /api/v1/outbounds — 출고 목록 조회
 // 비유: 출고 관리실에서 전체 출고 전표를 꺼내 보여주는 것
 func (h *OutboundHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -176,6 +254,13 @@ func (h *OutboundHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if len(blItems) > 0 {
 		h.insertBLItems(outboundID, blItems)
 	}
+	if orderID := outboundOrderIDString(req.OrderID); orderID != "" {
+		if err := h.recalculateOrderProgress(orderID); err != nil {
+			log.Printf("[수주 출고 진행률 갱신 실패] order_id=%s err=%v", orderID, err)
+			response.RespondError(w, http.StatusInternalServerError, "출고는 등록됐지만 수주 잔량 갱신에 실패했습니다")
+			return
+		}
+	}
 
 	created[0].BLItems = h.fetchBLItems(outboundID)
 	response.RespondJSON(w, http.StatusCreated, created[0])
@@ -184,6 +269,18 @@ func (h *OutboundHandler) Create(w http.ResponseWriter, r *http.Request) {
 // Update — PUT /api/v1/outbounds/{id} — 출고 수정
 func (h *OutboundHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	prevOrderID := ""
+	if prevData, _, err := h.DB.From("outbounds").
+		Select("order_id", "exact", false).
+		Eq("outbound_id", id).
+		Execute(); err == nil {
+		var prev []model.Outbound
+		if json.Unmarshal(prevData, &prev) == nil && len(prev) > 0 {
+			prevOrderID = outboundOrderIDString(prev[0].OrderID)
+		}
+	} else {
+		log.Printf("[출고 수정 전 수주 연결 조회 실패] id=%s err=%v", id, err)
+	}
 
 	var req model.UpdateOutboundRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -231,12 +328,38 @@ func (h *OutboundHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updated[0].BLItems = h.fetchBLItems(id)
+	orderIDs := map[string]bool{}
+	if prevOrderID != "" {
+		orderIDs[prevOrderID] = true
+	}
+	if newOrderID := outboundOrderIDString(updated[0].OrderID); newOrderID != "" {
+		orderIDs[newOrderID] = true
+	}
+	for orderID := range orderIDs {
+		if err := h.recalculateOrderProgress(orderID); err != nil {
+			log.Printf("[수주 출고 진행률 갱신 실패] order_id=%s err=%v", orderID, err)
+			response.RespondError(w, http.StatusInternalServerError, "출고는 수정됐지만 수주 잔량 갱신에 실패했습니다")
+			return
+		}
+	}
 	response.RespondJSON(w, http.StatusOK, updated[0])
 }
 
 // Delete — DELETE /api/v1/outbounds/{id} — 출고 삭제
 func (h *OutboundHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	deletedOrderID := ""
+	if obData, _, err := h.DB.From("outbounds").
+		Select("order_id", "exact", false).
+		Eq("outbound_id", id).
+		Execute(); err == nil {
+		var outbounds []model.Outbound
+		if json.Unmarshal(obData, &outbounds) == nil && len(outbounds) > 0 {
+			deletedOrderID = outboundOrderIDString(outbounds[0].OrderID)
+		}
+	} else {
+		log.Printf("[출고 삭제 전 수주 연결 조회 실패] id=%s err=%v", id, err)
+	}
 
 	// outbound_bl_items는 ON DELETE CASCADE로 자동 삭제
 	// 수주 기준 계산서는 보존하고 outbound 연결만 해제한다. 출고만 있는 계산서는 같이 삭제한다.
@@ -270,6 +393,13 @@ func (h *OutboundHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[출고 삭제 실패] id=%s, err=%v", id, err)
 		response.RespondError(w, http.StatusInternalServerError, "출고 삭제에 실패했습니다")
 		return
+	}
+	if deletedOrderID != "" {
+		if err := h.recalculateOrderProgress(deletedOrderID); err != nil {
+			log.Printf("[수주 출고 진행률 갱신 실패] order_id=%s err=%v", deletedOrderID, err)
+			response.RespondError(w, http.StatusInternalServerError, "출고는 삭제됐지만 수주 잔량 갱신에 실패했습니다")
+			return
+		}
 	}
 
 	response.RespondJSON(w, http.StatusOK, struct {

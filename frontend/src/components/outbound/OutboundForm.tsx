@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Plus, Trash2 } from 'lucide-react';
+import { Lock, Plus, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { DateInput } from '@/components/ui/date-input';
@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/u
 import { useAppStore } from '@/stores/appStore';
 import { fetchWithAuth } from '@/lib/api';
 import { companyParams } from '@/lib/companyUtils';
+import { moduleLabel } from '@/lib/utils';
 import { USAGE_CATEGORY_LABEL, type Outbound, type UsageCategory } from '@/types/outbound';
 import type { Order } from '@/types/orders';
 import type { Product, Warehouse } from '@/types/masters';
@@ -48,6 +49,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: Record<string, unknown>) => Promise<void>;
   editData?: Outbound | null;
+  order?: Order | null;
 }
 
 function fmtInt(v: number | string | undefined): string {
@@ -56,8 +58,26 @@ function fmtInt(v: number | string | undefined): string {
   return isNaN(n) ? '' : n.toLocaleString('ko-KR');
 }
 
-export default function OutboundForm({ open, onOpenChange, onSubmit, editData }: Props) {
+function orderCategoryToOutboundUsage(category?: string): UsageCategory {
+  switch (category) {
+    case 'sale':
+      return 'sale';
+    case 'spare':
+      return 'sale_spare';
+    case 'repowering':
+      return 'repowering';
+    case 'maintenance':
+      return 'maintenance';
+    case 'construction':
+      return 'construction';
+    default:
+      return 'other';
+  }
+}
+
+export default function OutboundForm({ open, onOpenChange, onSubmit, editData, order }: Props) {
   const selectedCompanyId = useAppStore((s) => s.selectedCompanyId);
+  const effectiveCompanyId = order?.company_id || selectedCompanyId;
   const companies = useAppStore((s) => s.companies);
   const [products, setProducts] = useState<Product[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -76,10 +96,11 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData }:
   const selectedProductId = watch('product_id');
   const selectedProduct = products.find((p) => p.product_id === selectedProductId);
   const quantity = watch('quantity') || 0;
-  const capacityKw = selectedProduct ? quantity * selectedProduct.wattage_kw : 0;
+  const orderUnitKw = order?.quantity ? (order.capacity_kw ?? 0) / order.quantity : 0;
+  const capacityKw = selectedProduct ? quantity * selectedProduct.wattage_kw : quantity * orderUnitKw;
   const groupTrade = watch('group_trade') ?? false;
   const selectedOrderId = watch('order_id');
-  const selectedOrder = orders.find((o) => o.order_id === selectedOrderId);
+  const selectedOrder = order ?? orders.find((o) => o.order_id === selectedOrderId);
   const usageCat = watch('usage_category') ?? '';
   const warehouseId = watch('warehouse_id') ?? '';
   const targetCompanyId = watch('target_company_id') ?? '';
@@ -92,12 +113,12 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData }:
   }, []);
 
   useEffect(() => {
-    if (!selectedCompanyId) return;
-    const params = companyParams(selectedCompanyId);
+    if (!effectiveCompanyId) return;
+    const params = companyParams(effectiveCompanyId);
     fetchWithAuth<Order[]>(`/api/v1/orders?${params}`)
       .then((list) => setOrders(list.filter((o) => o.status !== 'completed' && o.status !== 'cancelled')))
       .catch(() => {});
-  }, [selectedCompanyId]);
+  }, [effectiveCompanyId]);
 
   // 품번 선택 시 해당 제조사의 B/L 목록 로드 (완료/ERP등록 상태만)
   useEffect(() => {
@@ -143,6 +164,27 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData }:
         } else {
           setBlEntries([]);
         }
+      } else if (order) {
+        const today = new Date().toISOString().slice(0, 10);
+        const remaining = order.remaining_qty ?? order.quantity - (order.shipped_qty ?? 0);
+        reset({
+          outbound_date: today,
+          product_id: order.product_id,
+          quantity: remaining as unknown as number,
+          warehouse_id: '',
+          usage_category: orderCategoryToOutboundUsage(order.management_category),
+          order_id: order.order_id,
+          site_name: order.site_name ?? '',
+          site_address: order.site_address ?? '',
+          spare_qty: order.spare_qty ?? '',
+          group_trade: false,
+          target_company_id: '',
+          erp_outbound_no: '',
+          memo: '',
+        });
+        setQtyDisplay(fmtInt(remaining));
+        setSpareQtyDisplay(fmtInt(order.spare_qty));
+        setBlEntries(order.bl_id ? [{ bl_id: order.bl_id, quantity: String(remaining) }] : []);
       } else {
         const today = new Date().toISOString().slice(0, 10);
         reset({
@@ -156,7 +198,7 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData }:
         setBlEntries([]);
       }
     }
-  }, [open, editData, reset]);
+  }, [open, editData, order, reset]);
 
   useEffect(() => {
     if (!open || editData || !selectedOrder) return;
@@ -164,10 +206,25 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData }:
     setValue('product_id', selectedOrder.product_id, { shouldDirty: true, shouldValidate: true });
     setValue('quantity', remaining as unknown as number, { shouldDirty: true, shouldValidate: true });
     setQtyDisplay(fmtInt(remaining));
-    setValue('usage_category', selectedOrder.management_category === 'sale' ? 'sale' : 'construction', { shouldDirty: true });
+    setValue('usage_category', orderCategoryToOutboundUsage(selectedOrder.management_category), { shouldDirty: true });
     setValue('site_name', selectedOrder.site_name ?? '', { shouldDirty: true });
     setValue('site_address', selectedOrder.site_address ?? '', { shouldDirty: true });
   }, [open, editData, selectedOrder, setValue]);
+
+  useEffect(() => {
+    if (!open || editData || warehouseId) return;
+    const orderBlId = order?.bl_id;
+    if (orderBlId) {
+      const orderBl = bls.find((b) => b.bl_id === orderBlId);
+      if (orderBl?.warehouse_id) {
+        setValue('warehouse_id', orderBl.warehouse_id, { shouldDirty: true, shouldValidate: true });
+        return;
+      }
+    }
+    if (warehouses.length === 1) {
+      setValue('warehouse_id', warehouses[0].warehouse_id, { shouldDirty: true, shouldValidate: true });
+    }
+  }, [open, editData, order?.bl_id, bls, warehouseId, warehouses, setValue]);
 
   const addBlEntry = () => setBlEntries(prev => [...prev, { bl_id: '', quantity: '' }]);
   const removeBlEntry = (i: number) => setBlEntries(prev => prev.filter((_, idx) => idx !== i));
@@ -192,7 +249,7 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData }:
 
     const payload: Record<string, unknown> = {
       ...data,
-      company_id: selectedCompanyId,
+      company_id: effectiveCompanyId,
       capacity_kw: capacityKw,
       bl_items: validBLItems.length > 0 ? validBLItems : undefined,
     };
@@ -211,8 +268,8 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData }:
     }
   };
 
-  const otherCompanies = companies.filter((c) => c.company_id !== selectedCompanyId);
-  const productLabel = selectedProduct ? `${selectedProduct.product_code} — ${selectedProduct.product_name}` : '';
+  const otherCompanies = companies.filter((c) => c.company_id !== effectiveCompanyId);
+  const productLabel = selectedProduct ? `${moduleLabel(selectedProduct.manufacturers ?? selectedProduct.manufacturer_name, selectedProduct.spec_wp)} | ${selectedProduct.product_code} | ${selectedProduct.product_name}` : '';
   const warehouseLabel = warehouses.find(w => w.warehouse_id === warehouseId)?.warehouse_name ?? '';
   const usageCatLabel = (USAGE_CATEGORY_LABEL as Record<string, string>)[usageCat] ?? '';
   const orderLabel = selectedOrder
@@ -230,6 +287,17 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData }:
         {submitError && (
           <div className="rounded-md bg-destructive/10 border border-destructive/30 px-4 py-3 text-sm text-destructive">
             {submitError}
+          </div>
+        )}
+
+        {order && !editData && (
+          <div className="rounded-md border bg-slate-50 px-3 py-2 text-xs text-slate-700">
+            <div className="font-medium">수주에서 출고 등록</div>
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-slate-600">
+              <span>수주 <b>{order.order_number ?? order.order_id.slice(0, 8)}</b></span>
+              <span>거래처 <b>{order.customer_name ?? '—'}</b></span>
+              <span>잔량 <b>{fmtInt(order.remaining_qty ?? order.quantity - (order.shipped_qty ?? 0))} EA</b></span>
+            </div>
           </div>
         )}
 
@@ -256,16 +324,23 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData }:
 
           <div className="space-y-1.5">
             <Label>품번 *</Label>
-            <Select value={selectedProductId ?? ''} onValueChange={(v) => setValue('product_id', v ?? '')}>
-              <SelectTrigger className="w-full"><Txt text={productLabel} /></SelectTrigger>
-              <SelectContent>
-                {products.map((p) => (
-                  <SelectItem key={p.product_id} value={p.product_id}>
-                    {p.product_code} — {p.product_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {order && !editData ? (
+              <div className="flex h-9 items-center gap-2 rounded-md border border-input bg-muted/30 px-3 text-sm">
+                <Lock className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+                <span className="flex-1 truncate">{productLabel || order.product_name || order.product_id}</span>
+              </div>
+            ) : (
+              <Select value={selectedProductId ?? ''} onValueChange={(v) => setValue('product_id', v ?? '')}>
+                <SelectTrigger className="w-full"><Txt text={productLabel} /></SelectTrigger>
+                <SelectContent>
+                  {products.map((p) => (
+                    <SelectItem key={p.product_id} value={p.product_id}>
+                      {moduleLabel(p.manufacturers ?? p.manufacturer_name, p.spec_wp)} | {p.product_code} | {p.product_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {errors.product_id && <p className="text-xs text-destructive">{errors.product_id.message}</p>}
             {selectedProduct && (
               <div className="rounded-md border p-2 bg-muted/30 text-xs grid grid-cols-3 gap-2">
@@ -396,17 +471,24 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData }:
 
           <div className="space-y-1.5">
             <Label>수주 연결</Label>
-            <Select value={selectedOrderId ?? ''} onValueChange={(v) => setValue('order_id', v === '_none' ? '' : (v ?? ''))}>
-              <SelectTrigger className="w-full"><Txt text={orderLabel || '연결 안함'} /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_none">연결 안함</SelectItem>
-                {orders.map((o) => (
-                  <SelectItem key={o.order_id} value={o.order_id}>
-                    {o.order_number ?? o.order_id.slice(0, 8)} · {o.product_name ?? o.product_code ?? ''} · 잔량 {(o.remaining_qty ?? o.quantity - (o.shipped_qty ?? 0)).toLocaleString('ko-KR')}EA
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {order && !editData ? (
+              <div className="flex h-9 items-center gap-2 rounded-md border border-input bg-muted/30 px-3 text-sm">
+                <Lock className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+                <span className="flex-1 truncate">{orderLabel || order.order_number || order.order_id.slice(0, 8)}</span>
+              </div>
+            ) : (
+              <Select value={selectedOrderId ?? ''} onValueChange={(v) => setValue('order_id', v === '_none' ? '' : (v ?? ''))}>
+                <SelectTrigger className="w-full"><Txt text={orderLabel || '연결 안함'} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">연결 안함</SelectItem>
+                  {orders.map((o) => (
+                    <SelectItem key={o.order_id} value={o.order_id}>
+                      {o.order_number ?? o.order_id.slice(0, 8)} · {o.product_name ?? o.product_code ?? ''} · 잔량 {(o.remaining_qty ?? o.quantity - (o.shipped_qty ?? 0)).toLocaleString('ko-KR')}EA
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {selectedOrder?.remaining_qty !== undefined && (
               <p className="text-[10px] text-blue-600">수주잔량: {selectedOrder.remaining_qty.toLocaleString('ko-KR')}장</p>
             )}

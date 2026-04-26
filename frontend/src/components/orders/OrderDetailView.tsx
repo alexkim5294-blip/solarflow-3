@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Pencil, Plus, Trash2, Truck } from 'lucide-react';
 import ConfirmDialog from '@/components/common/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import FulfillmentSourceBadge from './FulfillmentSourceBadge';
 import OrderForm from './OrderForm';
+import OutboundForm from '@/components/outbound/OutboundForm';
 import SaleForm from '@/components/outbound/SaleForm';
 import LinkedMemoWidget from '@/components/memo/LinkedMemoWidget';
 import { useOrderDetail, useOrderOutbounds } from '@/hooks/useOrders';
@@ -37,12 +38,13 @@ function Field({ label, value }: { label: string; value: string | undefined }) {
 
 export default function OrderDetailView({ orderId, onBack }: Props) {
   const { data: order, loading, reload } = useOrderDetail(orderId);
-  const { data: outbounds, loading: obLoading } = useOrderOutbounds(orderId);
+  const { data: outbounds, loading: obLoading, reload: reloadOutbounds } = useOrderOutbounds(orderId);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [saleFormOpen, setSaleFormOpen] = useState(false);
+  const [outboundFormOpen, setOutboundFormOpen] = useState(false);
   const [sales, setSales] = useState<Sale[]>([]);
 
   const loadSales = async () => {
@@ -90,6 +92,12 @@ export default function OrderDetailView({ orderId, onBack }: Props) {
     await loadSales();
   };
 
+  const handleOutboundSubmit = async (data: Record<string, unknown>) => {
+    await fetchWithAuth('/api/v1/outbounds', { method: 'POST', body: JSON.stringify(data) });
+    await reloadOutbounds();
+    await reload();
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -99,6 +107,9 @@ export default function OrderDetailView({ orderId, onBack }: Props) {
         <h2 className="text-base font-semibold flex-1">수주 {order.order_number || order.order_id.slice(0, 8)}</h2>
         <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
           <Pencil className="mr-1 h-3.5 w-3.5" />수정
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setOutboundFormOpen(true)} disabled={remaining <= 0}>
+          <Truck className="mr-1 h-3.5 w-3.5" />출고 등록
         </Button>
         <Button variant="outline" size="sm" onClick={() => setDeleteOpen(true)} className="text-destructive hover:text-destructive">
           <Trash2 className="mr-1 h-3.5 w-3.5" />삭제
@@ -139,7 +150,7 @@ export default function OrderDetailView({ orderId, onBack }: Props) {
             <Field label="현장 담당" value={order.site_contact} />
             <Field label="현장 전화" value={order.site_phone} />
             <Field label="결제조건" value={order.payment_terms} />
-            <Field label="선수금율" value={order.deposit_rate ? `${order.deposit_rate}%` : undefined} />
+            <Field label="현금/선수금율" value={order.deposit_rate ? `${order.deposit_rate}%` : undefined} />
             <Field label="납기일" value={order.delivery_due ? formatDate(order.delivery_due) : undefined} />
             <Field label="스페어" value={order.spare_qty?.toString()} />
             {order.memo && <Field label="메모" value={order.memo} />}
@@ -179,9 +190,14 @@ export default function OrderDetailView({ orderId, onBack }: Props) {
 
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold">연결된 출고</h3>
-        <p className="text-xs text-muted-foreground">
-          출고: {formatNumber(totalShipped)} / 잔량: {formatNumber(remaining)}
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="text-xs text-muted-foreground">
+            출고: {formatNumber(totalShipped)} / 잔량: {formatNumber(remaining)}
+          </p>
+          <Button size="sm" variant="outline" onClick={() => setOutboundFormOpen(true)} disabled={remaining <= 0}>
+            <Plus className="mr-1 h-3.5 w-3.5" />출고 등록
+          </Button>
+        </div>
       </div>
 
       {obLoading ? <LoadingSpinner /> : outbounds.length === 0 ? (
@@ -227,6 +243,12 @@ export default function OrderDetailView({ orderId, onBack }: Props) {
       <LinkedMemoWidget linkedTable="orders" linkedId={orderId} />
 
       <OrderForm open={editOpen} onOpenChange={setEditOpen} onSubmit={handleUpdate} editData={order} />
+      <OutboundForm
+        open={outboundFormOpen}
+        onOpenChange={setOutboundFormOpen}
+        onSubmit={handleOutboundSubmit}
+        order={order}
+      />
       <SaleForm
         open={saleFormOpen}
         onOpenChange={setSaleFormOpen}

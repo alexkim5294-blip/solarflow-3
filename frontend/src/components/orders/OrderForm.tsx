@@ -681,14 +681,40 @@ export default function OrderForm({ open, onOpenChange, onSubmit, onPrefillCance
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="space-y-1.5"><Label>결제조건</Label><Input {...register('payment_terms')} placeholder="자유기재" /></div>
-            <div className="space-y-1.5">
-              <Label>선수금율 (%)</Label>
-              <Input type="number" step="0.1" {...register('deposit_rate')} />
-              <p className="text-[10px] text-muted-foreground">조건 기록용 · 실제 입금은 수금 탭에서 매칭</p>
+          <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label className="font-medium">결제/납기 조건</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {['현금 100%', '현금 30% + 신용 60일', '현금 50% + 신용 30일', '신용 60일'].map((term) => (
+                  <Button
+                    key={term}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-[11px]"
+                    onClick={() => {
+                      setValue('payment_terms', term, { shouldDirty: true });
+                      const match = term.match(/현금\s*(\d+(?:\.\d+)?)%/);
+                      if (match) setValue('deposit_rate', Number(match[1]) as unknown as FormData['deposit_rate'], { shouldDirty: true });
+                    }}
+                  >
+                    {term}
+                  </Button>
+                ))}
+              </div>
             </div>
-            <div className="space-y-1.5"><Label>납기일</Label><DateInput value={watch('delivery_due') ?? ''} onChange={(v) => setValue('delivery_due', v, { shouldDirty: true })} /></div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="space-y-1.5 sm:col-span-1">
+                <Label>결제조건</Label>
+                <Input {...register('payment_terms')} placeholder="예: 현금 30% + 신용 60일" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>현금/선수금율 (%)</Label>
+                <Input type="number" step="0.1" {...register('deposit_rate')} />
+                <p className="text-[10px] text-muted-foreground">조건 기록용 · 실제 입금은 수금 탭에서 매칭</p>
+              </div>
+              <div className="space-y-1.5"><Label>납기일</Label><DateInput value={watch('delivery_due') ?? ''} onChange={(v) => setValue('delivery_due', v, { shouldDirty: true })} /></div>
+            </div>
           </div>
 
           <div className="space-y-1.5">

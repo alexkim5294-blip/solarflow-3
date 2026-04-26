@@ -89,24 +89,42 @@ export default function OrdersPage() {
     const expectedPrice = params.get('expected_price_per_wp');
     const spareQty      = params.get('spare_qty');
 
-    setPendingAllocId(allocId);
-    if (linkedAllocId) setPendingLinkedAllocId(linkedAllocId);
-    setOrderFormPrefill({
-      company_id: companyId,
-      product_id: productId,
-      quantity: parseInt(qty, 10),
-      management_category: purpose === 'construction' ? 'construction' : 'sale',
-      fulfillment_source: sourceType === 'incoming' ? 'incoming' : 'stock',
-      customer_hint: customer,
-      site_name: site,
-      order_number: orderNo,
-      bl_id: blId,
-      expected_price_per_wp: expectedPrice ? Number(expectedPrice) : undefined,
-      spare_qty: spareQty ? Number(spareQty) : undefined,
-    });
-    setOrderFormOpen(true);
-    // URL 정리 (파라미터 제거)
-    navigate('/orders', { replace: true });
+    let cancelled = false;
+    const openPrefilledOrder = async () => {
+      let effectiveCompanyId = companyId;
+      if (!effectiveCompanyId || effectiveCompanyId === 'all') {
+        try {
+          const alloc = await fetchWithAuth<InventoryAllocation>(`/api/v1/inventory/allocations/${allocId}`);
+          effectiveCompanyId = alloc.company_id;
+        } catch {
+          effectiveCompanyId = undefined;
+        }
+      }
+      if (cancelled) return;
+
+      setPendingAllocId(allocId);
+      if (linkedAllocId) setPendingLinkedAllocId(linkedAllocId);
+      setOrderFormPrefill({
+        alloc_id: allocId,
+        company_id: effectiveCompanyId,
+        product_id: productId,
+        quantity: parseInt(qty, 10),
+        management_category: purpose === 'construction' ? 'construction' : 'sale',
+        fulfillment_source: sourceType === 'incoming' ? 'incoming' : 'stock',
+        customer_hint: customer,
+        site_name: site,
+        order_number: orderNo,
+        bl_id: blId,
+        expected_price_per_wp: expectedPrice ? Number(expectedPrice) : undefined,
+        spare_qty: spareQty ? Number(spareQty) : undefined,
+      });
+      setOrderFormOpen(true);
+      // URL 정리 (파라미터 제거)
+      navigate('/orders', { replace: true });
+    };
+
+    void openPrefilledOrder();
+    return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
@@ -559,7 +577,9 @@ export default function OrdersPage() {
         }}
         onSubmit={handleCreateOrder}
         onPrefillCancel={handlePrefillCancel}
-        prefillData={orderFormPrefill}
+        prefillData={orderFormPrefill && pendingAllocId
+          ? { ...orderFormPrefill, alloc_id: orderFormPrefill.alloc_id ?? pendingAllocId }
+          : orderFormPrefill}
       />
       <OutboundForm open={obFormOpen} onOpenChange={setObFormOpen} onSubmit={handleCreateOutbound} />
       <ReceiptForm

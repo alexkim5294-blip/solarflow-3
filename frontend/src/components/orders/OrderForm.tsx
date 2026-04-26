@@ -52,6 +52,7 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 export interface OrderPrefillData {
+  alloc_id?: string;
   company_id?: string;
   product_id?: string;
   quantity?: number;
@@ -105,6 +106,7 @@ export default function OrderForm({ open, onOpenChange, onSubmit, onPrefillCance
   const [blId, setBlId] = useState('');
   const [bls, setBls] = useState<BLShipment[]>([]);
   const [blCostMap, setBlCostMap] = useState<Map<string, { usdWp?: number; krwWp?: number }>>(new Map());
+  const [resolvedPrefillCompanyId, setResolvedPrefillCompanyId] = useState<string | null>(null);
   // 천단위 표시용 display state
   const [qtyDisplay, setQtyDisplay] = useState('');
   const [spareQtyDisplay, setSpareQtyDisplay] = useState('');
@@ -128,7 +130,24 @@ export default function OrderForm({ open, onOpenChange, onSubmit, onPrefillCance
   const productOptionText = (p?: Product | null) => p ? `${productModuleText(p)} | ${p.product_code} | ${p.product_name}` : '';
   // 가용재고 배정 → 수주 자동 입력 모드 (일부 필드 잠금 + amber 표시)
   const isPrefill = !!(prefillData && !editData);
-  const effectiveCompanyId = isPrefill && prefillData?.company_id ? prefillData.company_id : selectedCompanyId;
+  const prefillCompanyId = prefillData?.company_id && prefillData.company_id !== 'all'
+    ? prefillData.company_id
+    : null;
+  const effectiveCompanyId = isPrefill
+    ? (prefillCompanyId || resolvedPrefillCompanyId || selectedCompanyId)
+    : selectedCompanyId;
+
+  useEffect(() => {
+    setResolvedPrefillCompanyId(null);
+    if (!open || !isPrefill || prefillCompanyId || !prefillData?.alloc_id) return;
+    let cancelled = false;
+    fetchWithAuth<{ company_id?: string }>(`/api/v1/inventory/allocations/${prefillData.alloc_id}`)
+      .then((alloc) => {
+        if (!cancelled && alloc.company_id) setResolvedPrefillCompanyId(alloc.company_id);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [open, isPrefill, prefillData?.alloc_id, prefillCompanyId]);
 
   useEffect(() => {
     fetchWithAuth<Product[]>('/api/v1/products')

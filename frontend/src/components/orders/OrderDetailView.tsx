@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { formatDate, formatNumber, formatKw } from '@/lib/utils';
+import { formatDate, formatNumber, formatKw, moduleLabel } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import FulfillmentSourceBadge from './FulfillmentSourceBadge';
@@ -58,6 +58,9 @@ export default function OrderDetailView({ orderId, onBack }: Props) {
 
   const remaining = order.remaining_qty ?? (order.quantity - (order.shipped_qty ?? 0));
   const totalShipped = outbounds.reduce((sum, ob) => sum + ob.quantity, 0);
+  const moduleText = order.manufacturer_name || order.spec_wp
+    ? moduleLabel(order.manufacturer_name, order.spec_wp)
+    : undefined;
 
   const handleUpdate = async (data: Record<string, unknown>) => {
     await fetchWithAuth(`/api/v1/orders/${orderId}`, { method: 'PUT', body: JSON.stringify(data) });
@@ -119,12 +122,11 @@ export default function OrderDetailView({ orderId, onBack }: Props) {
             <Field label="수주일" value={formatDate(order.order_date)} />
             <Field label="접수방법" value={RECEIPT_METHOD_LABEL[order.receipt_method]} />
             <Field label="관리구분" value={MANAGEMENT_CATEGORY_LABEL[order.management_category]} />
-            <Field label="충당소스" value={undefined} />
-            {/* 충당소스는 Badge로 따로 표시 */}
             <div>
               <p className="text-[10px] text-muted-foreground">충당소스</p>
               <FulfillmentSourceBadge source={order.fulfillment_source} />
             </div>
+            <Field label="제조사/규격" value={moduleText} />
             <Field label="품번" value={order.product_code} />
             <Field label="품명" value={order.product_name} />
             <Field label="규격" value={order.spec_wp ? `${order.spec_wp}Wp` : undefined} />

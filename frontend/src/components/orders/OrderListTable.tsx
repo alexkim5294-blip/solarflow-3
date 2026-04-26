@@ -1,6 +1,6 @@
 import EmptyState from '@/components/common/EmptyState';
 import FulfillmentSourceBadge from './FulfillmentSourceBadge';
-import { cn } from '@/lib/utils';
+import { cn, moduleLabel } from '@/lib/utils';
 import { formatDate, formatNumber, formatKw } from '@/lib/utils';
 import {
   ORDER_STATUS_LABEL, ORDER_STATUS_COLOR, MANAGEMENT_CATEGORY_LABEL,
@@ -39,6 +39,9 @@ export default function OrderListTable({ items, onSelect, onNew }: Props) {
         <tbody>
           {items.map((o) => {
             const remaining = o.remaining_qty ?? (o.quantity - (o.shipped_qty ?? 0));
+            const moduleText = o.manufacturer_name || o.spec_wp
+              ? moduleLabel(o.manufacturer_name, o.spec_wp)
+              : undefined;
             return (
               <tr key={o.order_id} className="border-t hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => onSelect(o)}>
                 {/* 수주 정보 */}
@@ -50,9 +53,9 @@ export default function OrderListTable({ items, onSelect, onNew }: Props) {
 
                 {/* 품목 */}
                 <td className="p-3 align-top min-w-[180px]">
-                  <div className="font-medium">{o.product_name ?? '—'}</div>
+                  <div className="font-medium">{moduleText ?? o.product_name ?? '—'}</div>
                   <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                    {o.spec_wp ? `${o.spec_wp}` : '—'}
+                    {[o.product_code, o.product_name].filter(Boolean).join(' · ') || '—'}
                     {o.capacity_kw ? ` · ${formatKw(o.capacity_kw)}` : ''}
                   </div>
                   <div className="mt-1">

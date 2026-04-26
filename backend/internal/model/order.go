@@ -35,26 +35,33 @@ var validFulfillmentSources = map[string]bool{
 // Order — 수주(판매 주문) 정보를 담는 구조체
 // 비유: "수주 계약서" — 어느 고객이, 어떤 품번을, 몇 장, 얼마에 주문했는지 기록
 type Order struct {
-	OrderID       string   `json:"order_id"`
-	OrderNumber   *string  `json:"order_number"`
-	CompanyID     string   `json:"company_id"`
-	CustomerID    string   `json:"customer_id"`
-	OrderDate     string   `json:"order_date"`
-	ReceiptMethod string   `json:"receipt_method"`
-	ProductID     string   `json:"product_id"`
-	Quantity      int      `json:"quantity"`
-	CapacityKw    *float64 `json:"capacity_kw"`
-	UnitPriceWp   float64  `json:"unit_price_wp"`
-	SiteID        *string  `json:"site_id"`
-	SiteName      *string  `json:"site_name"`
-	SiteAddress   *string  `json:"site_address"`
-	SiteContact   *string  `json:"site_contact"`
-	SitePhone     *string  `json:"site_phone"`
-	PaymentTerms  *string  `json:"payment_terms"`
-	DepositRate   *float64 `json:"deposit_rate"`
-	DeliveryDue   *string  `json:"delivery_due"`
-	ShippedQty    *int     `json:"shipped_qty"`
-	RemainingQty  *int     `json:"remaining_qty"`
+	OrderID            string   `json:"order_id"`
+	OrderNumber        *string  `json:"order_number"`
+	CompanyID          string   `json:"company_id"`
+	CompanyName        *string  `json:"company_name,omitempty"`
+	CustomerID         string   `json:"customer_id"`
+	CustomerName       *string  `json:"customer_name,omitempty"`
+	OrderDate          string   `json:"order_date"`
+	ReceiptMethod      string   `json:"receipt_method"`
+	ProductID          string   `json:"product_id"`
+	ProductName        *string  `json:"product_name,omitempty"`
+	ProductCode        *string  `json:"product_code,omitempty"`
+	ManufacturerName   *string  `json:"manufacturer_name,omitempty"`
+	SpecWp             *int     `json:"spec_wp,omitempty"`
+	WattageKw          *float64 `json:"wattage_kw,omitempty"`
+	Quantity           int      `json:"quantity"`
+	CapacityKw         *float64 `json:"capacity_kw"`
+	UnitPriceWp        float64  `json:"unit_price_wp"`
+	SiteID             *string  `json:"site_id"`
+	SiteName           *string  `json:"site_name"`
+	SiteAddress        *string  `json:"site_address"`
+	SiteContact        *string  `json:"site_contact"`
+	SitePhone          *string  `json:"site_phone"`
+	PaymentTerms       *string  `json:"payment_terms"`
+	DepositRate        *float64 `json:"deposit_rate"`
+	DeliveryDue        *string  `json:"delivery_due"`
+	ShippedQty         *int     `json:"shipped_qty"`
+	RemainingQty       *int     `json:"remaining_qty"`
 	Status             string   `json:"status"`
 	ManagementCategory string   `json:"management_category"`
 	FulfillmentSource  string   `json:"fulfillment_source"`
@@ -66,23 +73,23 @@ type Order struct {
 // CreateOrderRequest — 수주 등록 시 클라이언트가 보내는 데이터
 // 비유: "수주 등록 신청서" — 법인, 고객, 주문일, 품번, 수량, 단가를 필수 기재
 type CreateOrderRequest struct {
-	OrderNumber   *string  `json:"order_number"`
-	CompanyID     string   `json:"company_id"`
-	CustomerID    string   `json:"customer_id"`
-	OrderDate     string   `json:"order_date"`
-	ReceiptMethod string   `json:"receipt_method"`
-	ProductID     string   `json:"product_id"`
-	Quantity      int      `json:"quantity"`
-	CapacityKw    *float64 `json:"capacity_kw"`
-	UnitPriceWp   float64  `json:"unit_price_wp"`
-	SiteID        *string  `json:"site_id,omitempty"`
-	SiteName      *string  `json:"site_name"`
-	SiteAddress   *string  `json:"site_address"`
-	SiteContact   *string  `json:"site_contact"`
-	SitePhone     *string  `json:"site_phone"`
-	PaymentTerms  *string  `json:"payment_terms"`
-	DepositRate   *float64 `json:"deposit_rate"`
-	DeliveryDue   *string  `json:"delivery_due"`
+	OrderNumber        *string  `json:"order_number"`
+	CompanyID          string   `json:"company_id"`
+	CustomerID         string   `json:"customer_id"`
+	OrderDate          string   `json:"order_date"`
+	ReceiptMethod      string   `json:"receipt_method"`
+	ProductID          string   `json:"product_id"`
+	Quantity           int      `json:"quantity"`
+	CapacityKw         *float64 `json:"capacity_kw"`
+	UnitPriceWp        float64  `json:"unit_price_wp"`
+	SiteID             *string  `json:"site_id,omitempty"`
+	SiteName           *string  `json:"site_name"`
+	SiteAddress        *string  `json:"site_address"`
+	SiteContact        *string  `json:"site_contact"`
+	SitePhone          *string  `json:"site_phone"`
+	PaymentTerms       *string  `json:"payment_terms"`
+	DepositRate        *float64 `json:"deposit_rate"`
+	DeliveryDue        *string  `json:"delivery_due"`
 	Status             string   `json:"status"`
 	ManagementCategory string   `json:"management_category"`
 	FulfillmentSource  string   `json:"fulfillment_source"`
@@ -144,25 +151,25 @@ func (req *CreateOrderRequest) Validate() string {
 // UpdateOrderRequest — 수주 수정 시 클라이언트가 보내는 데이터
 // 비유: "수주 변경 신청서" — 바꾸고 싶은 항목만 적어서 제출
 type UpdateOrderRequest struct {
-	OrderNumber   *string  `json:"order_number,omitempty"`
-	CompanyID     *string  `json:"company_id,omitempty"`
-	CustomerID    *string  `json:"customer_id,omitempty"`
-	OrderDate     *string  `json:"order_date,omitempty"`
-	ReceiptMethod *string  `json:"receipt_method,omitempty"`
-	ProductID     *string  `json:"product_id,omitempty"`
-	Quantity      *int     `json:"quantity,omitempty"`
-	CapacityKw    *float64 `json:"capacity_kw,omitempty"`
-	UnitPriceWp   *float64 `json:"unit_price_wp,omitempty"`
-	SiteID        *string  `json:"site_id,omitempty"`
-	SiteName      *string  `json:"site_name,omitempty"`
-	SiteAddress   *string  `json:"site_address,omitempty"`
-	SiteContact   *string  `json:"site_contact,omitempty"`
-	SitePhone     *string  `json:"site_phone,omitempty"`
-	PaymentTerms  *string  `json:"payment_terms,omitempty"`
-	DepositRate   *float64 `json:"deposit_rate,omitempty"`
-	DeliveryDue   *string  `json:"delivery_due,omitempty"`
-	ShippedQty    *int     `json:"shipped_qty,omitempty"`
-	RemainingQty  *int     `json:"remaining_qty,omitempty"`
+	OrderNumber        *string  `json:"order_number,omitempty"`
+	CompanyID          *string  `json:"company_id,omitempty"`
+	CustomerID         *string  `json:"customer_id,omitempty"`
+	OrderDate          *string  `json:"order_date,omitempty"`
+	ReceiptMethod      *string  `json:"receipt_method,omitempty"`
+	ProductID          *string  `json:"product_id,omitempty"`
+	Quantity           *int     `json:"quantity,omitempty"`
+	CapacityKw         *float64 `json:"capacity_kw,omitempty"`
+	UnitPriceWp        *float64 `json:"unit_price_wp,omitempty"`
+	SiteID             *string  `json:"site_id,omitempty"`
+	SiteName           *string  `json:"site_name,omitempty"`
+	SiteAddress        *string  `json:"site_address,omitempty"`
+	SiteContact        *string  `json:"site_contact,omitempty"`
+	SitePhone          *string  `json:"site_phone,omitempty"`
+	PaymentTerms       *string  `json:"payment_terms,omitempty"`
+	DepositRate        *float64 `json:"deposit_rate,omitempty"`
+	DeliveryDue        *string  `json:"delivery_due,omitempty"`
+	ShippedQty         *int     `json:"shipped_qty,omitempty"`
+	RemainingQty       *int     `json:"remaining_qty,omitempty"`
 	Status             *string  `json:"status,omitempty"`
 	ManagementCategory *string  `json:"management_category,omitempty"`
 	FulfillmentSource  *string  `json:"fulfillment_source,omitempty"`

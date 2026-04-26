@@ -6,13 +6,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
+import { DateInput } from '@/components/ui/date-input';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
+import { PartnerCombobox } from '@/components/common/PartnerCombobox';
 import { useAppStore } from '@/stores/appStore';
 import { companyQueryUrl, fetchCalc } from '@/lib/companyUtils';
 import { fetchWithAuth } from '@/lib/api';
 import { formatKRW, formatNumber, moduleLabel } from '@/lib/utils';
 import type { SaleListItem } from '@/types/outbound';
 import type { CustomerAnalysis, CustomerItem } from '@/hooks/useDashboard';
+import type { Manufacturer, Partner, Product } from '@/types/masters';
 
 interface MarginItem {
   manufacturer_name: string;
@@ -50,6 +54,8 @@ interface PageState {
   margin: MarginAnalysis | null;
   customers: CustomerAnalysis | null;
 }
+
+type PeriodFilter = 'all' | 'last3' | 'year' | 'custom';
 
 const emptyMargin: MarginAnalysis = {
   items: [],
@@ -171,8 +177,47 @@ function toMonth(date?: string): string {
   return date ? date.slice(0, 7) : '날짜 없음';
 }
 
+function formatDateInput(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function firstDayOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function resolvePeriod(period: PeriodFilter, customFrom: string, customTo: string) {
+  const today = new Date();
+  if (period === 'last3') {
+    const from = firstDayOfMonth(new Date(today.getFullYear(), today.getMonth() - 2, 1));
+    return { dateFrom: formatDateInput(from), dateTo: formatDateInput(today) };
+  }
+  if (period === 'year') {
+    return { dateFrom: `${today.getFullYear()}-01-01`, dateTo: formatDateInput(today) };
+  }
+  if (period === 'custom') {
+    return { dateFrom: customFrom || undefined, dateTo: customTo || undefined };
+  }
+  return { dateFrom: undefined, dateTo: undefined };
+}
+
+function withinRange(date: string | undefined, dateFrom?: string, dateTo?: string): boolean {
+  if (!date) return !dateFrom && !dateTo;
+  const day = date.slice(0, 10);
+  if (dateFrom && day < dateFrom) return false;
+  if (dateTo && day > dateTo) return false;
+  return true;
+}
+
 export default function SalesAnalysisPage() {
   const selectedCompanyId = useAppStore((s) => s.selectedCompanyId);
+  const [period, setPeriod] = useState<PeriodFilter>('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [customerFilter, setCustomerFilter] = useState('');
+  const [manufacturerFilter, setManufacturerFilter] = useState('');
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [state, setState] = useState<PageState>({
     loading: true,
     error: null,
@@ -181,6 +226,23 @@ export default function SalesAnalysisPage() {
     customers: null,
   });
 
+  const dateRange = useMemo(
+    () => resolvePeriod(period, customFrom, customTo),
+    [customFrom, customTo, period],
+  );
+
+  useEffect(() => {
+    fetchWithAuth<Partner[]>('/api/v1/partners')
+      .then((list) => setPartners(list.filter((p) => p.is_active && (p.partner_type === 'customer' || p.partner_type === 'both'))))
+      .catch(() => setPartners([]));
+    fetchWithAuth<Manufacturer[]>('/api/v1/manufacturers')
+      .then((list) => setManufacturers(list.filter((m) => m.is_active)))
+      .catch(() => setManufacturers([]));
+    fetchWithAuth<Product[]>('/api/v1/products')
+      .then((list) => setProducts(list.filter((p) => p.is_active)))
+      .catch(() => setProducts([]));
+  }, []);
+
   const load = useCallback(async () => {
     if (!selectedCompanyId) {
       setState({ loading: false, error: null, sales: [], margin: null, customers: null });
@@ -188,18 +250,33 @@ export default function SalesAnalysisPage() {
     }
     setState((prev) => ({ ...prev, loading: true, error: null }));
     try {
+      const calcFilterBody = {
+        cost_basis: 'landed',
+        ...(dateRange.dateFrom ? { date_from: dateRange.dateFrom } : {}),
+        ...(dateRange.dateTo ? { date_to: dateRange.dateTo } : {}),
+      };
+      let salesUrl = companyQueryUrl('/api/v1/sales', selectedCompanyId);
+      if (customerFilter) {
+        salesUrl += `${salesUrl.includes('?') ? '&' : '?'}customer_id=${customerFilter}`;
+      }
       const [sales, margin, customers] = await Promise.all([
-        fetchWithAuth<SaleListItem[]>(companyQueryUrl('/api/v1/sales', selectedCompanyId)),
+        fetchWithAuth<SaleListItem[]>(salesUrl),
         fetchCalc<MarginAnalysis>(
           selectedCompanyId,
           '/api/v1/calc/margin-analysis',
-          { cost_basis: 'landed' },
+          {
+            ...calcFilterBody,
+            ...(manufacturerFilter ? { manufacturer_id: manufacturerFilter } : {}),
+          },
           mergeMargin,
         ).catch(() => emptyMargin),
         fetchCalc<CustomerAnalysis>(
           selectedCompanyId,
           '/api/v1/calc/customer-analysis',
-          { cost_basis: 'landed' },
+          {
+            ...calcFilterBody,
+            ...(customerFilter ? { customer_id: customerFilter } : {}),
+          },
           mergeCustomers,
         ).catch(() => emptyCustomers),
       ]);
@@ -211,13 +288,27 @@ export default function SalesAnalysisPage() {
         error: err instanceof Error ? err.message : '매출/이익 분석 데이터를 불러오지 못했습니다',
       }));
     }
-  }, [selectedCompanyId]);
+  }, [customerFilter, dateRange.dateFrom, dateRange.dateTo, manufacturerFilter, selectedCompanyId]);
 
   useEffect(() => { load(); }, [load]);
 
+  const productManufacturerMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const product of products) map.set(product.product_id, product.manufacturer_id);
+    return map;
+  }, [products]);
+
+  const filteredSales = useMemo(() => {
+    return state.sales.filter((item) => {
+      if (!withinRange(item.outbound_date ?? item.order_date, dateRange.dateFrom, dateRange.dateTo)) return false;
+      if (manufacturerFilter && (!item.product_id || productManufacturerMap.get(item.product_id) !== manufacturerFilter)) return false;
+      return true;
+    });
+  }, [dateRange.dateFrom, dateRange.dateTo, manufacturerFilter, productManufacturerMap, state.sales]);
+
   const monthly = useMemo(() => {
     const map = new Map<string, { month: string; revenue: number; vat: number; total: number; count: number }>();
-    for (const item of state.sales) {
+    for (const item of filteredSales) {
       const month = toMonth(item.outbound_date ?? item.order_date);
       const prev = map.get(month) ?? { month, revenue: 0, vat: 0, total: 0, count: 0 };
       prev.revenue += item.sale.supply_amount ?? 0;
@@ -227,24 +318,30 @@ export default function SalesAnalysisPage() {
       map.set(month, prev);
     }
     return Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month)).slice(-12);
-  }, [state.sales]);
+  }, [filteredSales]);
 
   const salesSummary = useMemo(() => {
-    const supply = state.sales.reduce((sum, item) => sum + (item.sale.supply_amount ?? 0), 0);
-    const total = state.sales.reduce((sum, item) => sum + (item.sale.total_amount ?? 0), 0);
-    const issued = state.sales.filter((item) => item.sale.tax_invoice_date).length;
+    const supply = filteredSales.reduce((sum, item) => sum + (item.sale.supply_amount ?? 0), 0);
+    const total = filteredSales.reduce((sum, item) => sum + (item.sale.total_amount ?? 0), 0);
+    const issued = filteredSales.filter((item) => item.sale.tax_invoice_date).length;
     return {
       supply,
       total,
-      count: state.sales.length,
+      count: filteredSales.length,
       issued,
-      pending: state.sales.length - issued,
-      issueRate: state.sales.length > 0 ? Math.round((issued / state.sales.length) * 100) : 0,
+      pending: filteredSales.length - issued,
+      issueRate: filteredSales.length > 0 ? Math.round((issued / filteredSales.length) * 100) : 0,
     };
-  }, [state.sales]);
+  }, [filteredSales]);
 
   const margin = state.margin ?? emptyMargin;
   const customers = state.customers ?? emptyCustomers;
+  const coveredCostCount = margin.items.filter((item) => item.avg_cost_wp != null).length;
+  const manufacturerLabel = manufacturerFilter
+    ? (manufacturers.find((m) => m.manufacturer_id === manufacturerFilter)?.short_name
+      ?? manufacturers.find((m) => m.manufacturer_id === manufacturerFilter)?.name_kr
+      ?? '제조사')
+    : '전체 제조사';
 
   if (!selectedCompanyId) {
     return <div className="p-6 text-sm text-muted-foreground">좌측 상단에서 법인을 선택해주세요.</div>;
@@ -264,6 +361,52 @@ export default function SalesAnalysisPage() {
         </button>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/20 p-3">
+        <Select value={period} onValueChange={(v) => setPeriod((v ?? 'all') as PeriodFilter)}>
+          <SelectTrigger className="h-8 w-32 text-xs">
+            <span className="truncate">
+              {period === 'last3' ? '최근 3개월' : period === 'year' ? '올해' : period === 'custom' ? '직접 지정' : '전체 기간'}
+            </span>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">전체 기간</SelectItem>
+            <SelectItem value="last3">최근 3개월</SelectItem>
+            <SelectItem value="year">올해</SelectItem>
+            <SelectItem value="custom">직접 지정</SelectItem>
+          </SelectContent>
+        </Select>
+        {period === 'custom' && (
+          <>
+            <DateInput value={customFrom} onChange={setCustomFrom} className="h-8 w-36 text-xs" placeholder="시작일" />
+            <DateInput value={customTo} onChange={setCustomTo} className="h-8 w-36 text-xs" placeholder="종료일" />
+          </>
+        )}
+        <div className="w-44">
+          <PartnerCombobox
+            partners={partners}
+            value={customerFilter}
+            onChange={setCustomerFilter}
+            placeholder="전체 거래처"
+            includeAllOption
+            allLabel="전체 거래처"
+          />
+        </div>
+        <Select value={manufacturerFilter || 'all'} onValueChange={(v) => setManufacturerFilter(v === 'all' ? '' : (v ?? ''))}>
+          <SelectTrigger className="h-8 w-36 text-xs">
+            <span className="truncate">{manufacturerLabel}</span>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">전체 제조사</SelectItem>
+            {manufacturers.map((m) => (
+              <SelectItem key={m.manufacturer_id} value={m.manufacturer_id}>{m.short_name || m.name_kr}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="ml-auto text-[10px] text-muted-foreground">
+          제조사 필터는 매출 집계와 품목별 이익에 적용됩니다.
+        </div>
+      </div>
+
       {state.error && (
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {state.error}
@@ -276,7 +419,7 @@ export default function SalesAnalysisPage() {
         <KpiCard label="계산서 발행률" value={`${salesSummary.issueRate}%`} sub={`${formatNumber(salesSummary.issued)}건 발행 / ${formatNumber(salesSummary.pending)}건 미발행`} />
         <KpiCard label="수금액" value={formatKRW(customers.summary.total_collected_krw)} sub="거래처 분석 기준" />
         <KpiCard label="미수금" value={formatKRW(customers.summary.total_outstanding_krw)} sub="수금매칭 잔액 기준" />
-        <KpiCard label="이익률" value={`${margin.summary.overall_margin_rate.toFixed(1)}%`} sub={formatKRW(margin.summary.total_margin_krw)} />
+        <KpiCard label="이익률" value={`${margin.summary.overall_margin_rate.toFixed(1)}%`} sub={`${formatKRW(margin.summary.total_margin_krw)} · 원가 ${coveredCostCount}/${margin.items.length}건`} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_0.9fr]">
@@ -346,6 +489,7 @@ export default function SalesAnalysisPage() {
                 <TableHead>품번 / 품명</TableHead>
                 <TableHead className="text-right">수량</TableHead>
                 <TableHead className="text-right">판매가</TableHead>
+                <TableHead>원가상태</TableHead>
                 <TableHead className="text-right">원가</TableHead>
                 <TableHead className="text-right">이익/Wp</TableHead>
                 <TableHead className="text-right">이익률</TableHead>
@@ -354,8 +498,10 @@ export default function SalesAnalysisPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {margin.items.map((item) => (
-                <TableRow key={`${item.manufacturer_name}-${item.product_code}-${item.spec_wp}`}>
+              {margin.items.map((item) => {
+                const costCovered = item.avg_cost_wp != null && item.total_cost_krw != null;
+                return (
+                <TableRow key={`${item.manufacturer_name}-${item.product_code}-${item.spec_wp}`} className={!costCovered ? 'bg-yellow-50/40' : undefined}>
                   <TableCell className="text-xs font-medium">{moduleLabel(item.manufacturer_name, item.spec_wp)}</TableCell>
                   <TableCell className="text-xs">
                     <div className="font-medium">{item.product_code}</div>
@@ -363,15 +509,23 @@ export default function SalesAnalysisPage() {
                   </TableCell>
                   <TableCell className="text-right text-xs">{formatNumber(item.total_sold_qty)}</TableCell>
                   <TableCell className="text-right text-xs">{formatNumber(item.avg_sale_price_wp)}원</TableCell>
+                  <TableCell className="text-xs">
+                    {costCovered ? (
+                      <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700">원가 연결</span>
+                    ) : (
+                      <span className="rounded-full bg-yellow-100 px-1.5 py-0.5 text-[10px] font-medium text-yellow-700">원가 없음</span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right text-xs">{item.avg_cost_wp != null ? `${formatNumber(item.avg_cost_wp)}원` : '—'}</TableCell>
                   <TableCell className="text-right text-xs">{item.margin_wp != null ? `${formatNumber(item.margin_wp)}원` : '—'}</TableCell>
                   <TableCell className="text-right text-xs font-medium">{item.margin_rate != null ? `${item.margin_rate.toFixed(1)}%` : '—'}</TableCell>
                   <TableCell className="text-right text-xs">{formatKRW(item.total_revenue_krw)}</TableCell>
                   <TableCell className="text-right text-xs font-medium">{item.total_margin_krw != null ? formatKRW(item.total_margin_krw) : '—'}</TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
               {margin.items.length === 0 && (
-                <TableRow><TableCell colSpan={9} className="py-8 text-center text-xs text-muted-foreground">이익 분석 데이터가 없습니다</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} className="py-8 text-center text-xs text-muted-foreground">이익 분석 데이터가 없습니다</TableCell></TableRow>
               )}
             </TableBody>
           </Table>

@@ -58,6 +58,18 @@ function fmtInt(v: number | string | undefined): string {
   return isNaN(n) ? '' : n.toLocaleString('ko-KR');
 }
 
+function numOrZero(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function orderRemainingQty(order?: Order | null): number {
+  if (!order) return 0;
+  const explicitRemaining = Number(order.remaining_qty);
+  if (Number.isFinite(explicitRemaining)) return explicitRemaining;
+  return Math.max(numOrZero(order.quantity) - numOrZero(order.shipped_qty), 0);
+}
+
 function orderCategoryToOutboundUsage(category?: string): UsageCategory {
   switch (category) {
     case 'sale':
@@ -96,7 +108,8 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData, o
   const selectedProductId = watch('product_id');
   const selectedProduct = products.find((p) => p.product_id === selectedProductId);
   const quantity = watch('quantity') || 0;
-  const orderUnitKw = order?.quantity ? (order.capacity_kw ?? 0) / order.quantity : 0;
+  const orderQty = numOrZero(order?.quantity);
+  const orderUnitKw = orderQty > 0 ? numOrZero(order?.capacity_kw) / orderQty : 0;
   const capacityKw = selectedProduct ? quantity * selectedProduct.wattage_kw : quantity * orderUnitKw;
   const groupTrade = watch('group_trade') ?? false;
   const selectedOrderId = watch('order_id');
@@ -166,7 +179,7 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData, o
         }
       } else if (order) {
         const today = new Date().toISOString().slice(0, 10);
-        const remaining = order.remaining_qty ?? order.quantity - (order.shipped_qty ?? 0);
+        const remaining = orderRemainingQty(order);
         reset({
           outbound_date: today,
           product_id: order.product_id,
@@ -202,7 +215,7 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData, o
 
   useEffect(() => {
     if (!open || editData || !selectedOrder) return;
-    const remaining = selectedOrder.remaining_qty ?? selectedOrder.quantity - (selectedOrder.shipped_qty ?? 0);
+    const remaining = orderRemainingQty(selectedOrder);
     setValue('product_id', selectedOrder.product_id, { shouldDirty: true, shouldValidate: true });
     setValue('quantity', remaining as unknown as number, { shouldDirty: true, shouldValidate: true });
     setQtyDisplay(fmtInt(remaining));
@@ -237,8 +250,9 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData, o
       .filter(e => e.bl_id && e.quantity && parseInt(e.quantity) > 0)
       .map(e => ({ bl_id: e.bl_id, quantity: parseInt(e.quantity.replace(/[^0-9]/g, ''), 10) }));
     const outboundQty = Number(data.quantity) || 0;
-    if (selectedOrder?.remaining_qty != null && outboundQty > selectedOrder.remaining_qty) {
-      setSubmitError(`출고 수량이 수주 잔량 ${selectedOrder.remaining_qty.toLocaleString('ko-KR')}EA를 초과합니다`);
+    const selectedRemaining = selectedOrder ? orderRemainingQty(selectedOrder) : null;
+    if (selectedRemaining != null && outboundQty > selectedRemaining) {
+      setSubmitError(`출고 수량이 수주 잔량 ${selectedRemaining.toLocaleString('ko-KR')}EA를 초과합니다`);
       return;
     }
     const blQty = validBLItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -273,7 +287,7 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData, o
   const warehouseLabel = warehouses.find(w => w.warehouse_id === warehouseId)?.warehouse_name ?? '';
   const usageCatLabel = (USAGE_CATEGORY_LABEL as Record<string, string>)[usageCat] ?? '';
   const orderLabel = selectedOrder
-    ? `${selectedOrder.order_number ?? selectedOrder.order_id.slice(0, 8)} · 잔량 ${(selectedOrder.remaining_qty ?? selectedOrder.quantity - (selectedOrder.shipped_qty ?? 0)).toLocaleString('ko-KR')}EA`
+    ? `${selectedOrder.order_number ?? selectedOrder.order_id.slice(0, 8)} · 잔량 ${orderRemainingQty(selectedOrder).toLocaleString('ko-KR')}EA`
     : (selectedOrderId ? '' : '');
   const targetLabel = companies.find(c => c.company_id === targetCompanyId)?.company_name ?? '';
 
@@ -296,7 +310,7 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData, o
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-slate-600">
               <span>수주 <b>{order.order_number ?? order.order_id.slice(0, 8)}</b></span>
               <span>거래처 <b>{order.customer_name ?? '—'}</b></span>
-              <span>잔량 <b>{fmtInt(order.remaining_qty ?? order.quantity - (order.shipped_qty ?? 0))} EA</b></span>
+              <span>잔량 <b>{fmtInt(orderRemainingQty(order))} EA</b></span>
             </div>
           </div>
         )}
@@ -483,14 +497,14 @@ export default function OutboundForm({ open, onOpenChange, onSubmit, editData, o
                   <SelectItem value="_none">연결 안함</SelectItem>
                   {orders.map((o) => (
                     <SelectItem key={o.order_id} value={o.order_id}>
-                      {o.order_number ?? o.order_id.slice(0, 8)} · {o.product_name ?? o.product_code ?? ''} · 잔량 {(o.remaining_qty ?? o.quantity - (o.shipped_qty ?? 0)).toLocaleString('ko-KR')}EA
+                      {o.order_number ?? o.order_id.slice(0, 8)} · {o.product_name ?? o.product_code ?? ''} · 잔량 {orderRemainingQty(o).toLocaleString('ko-KR')}EA
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             )}
-            {selectedOrder?.remaining_qty !== undefined && (
-              <p className="text-[10px] text-blue-600">수주잔량: {selectedOrder.remaining_qty.toLocaleString('ko-KR')}장</p>
+            {selectedOrder && (
+              <p className="text-[10px] text-blue-600">수주잔량: {orderRemainingQty(selectedOrder).toLocaleString('ko-KR')}장</p>
             )}
           </div>
 

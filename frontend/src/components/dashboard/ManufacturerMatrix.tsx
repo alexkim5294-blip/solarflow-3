@@ -12,9 +12,9 @@
  *   - MW·회전율만 노출 (금액 없음) → 모든 strategic 역할에서 표시 가능
  */
 import { useMemo, useState } from 'react';
-import { shortMfgName } from '@/lib/utils';
+import { Box, Factory } from 'lucide-react';
+import { cn, shortMfgName } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import type { InventoryItem } from '@/types/inventory';
 import type { TurnoverMatrixCell } from '@/types/turnover';
 
@@ -36,6 +36,10 @@ function ratioColor(ratio: number): string {
 
 export default function ManufacturerMatrix({ inventory, matrix }: Props) {
   const [mode, setMode] = useState<ViewMode>('manufacturer');
+  const modeOptions: { value: ViewMode; label: string; icon: typeof Factory }[] = [
+    { value: 'manufacturer', label: '제조사 × 출력', icon: Factory },
+    { value: 'moduleSize', label: '모듈크기 × 출력', icon: Box },
+  ];
 
   // 제조사 뷰: matrix 데이터로 직접 렌더
   const mfrView = useMemo(() => {
@@ -87,23 +91,23 @@ export default function ManufacturerMatrix({ inventory, matrix }: Props) {
     <Card>
       <CardHeader className="pb-3 flex flex-row items-center justify-between">
         <CardTitle className="text-base">재고 매트릭스</CardTitle>
-        <div className="flex items-center gap-1">
-          <Button
-            size="sm"
-            variant={mode === 'manufacturer' ? 'default' : 'outline'}
-            onClick={() => setMode('manufacturer')}
-            className="h-7 px-3 text-xs"
-          >
-            제조사 × 출력
-          </Button>
-          <Button
-            size="sm"
-            variant={mode === 'moduleSize' ? 'default' : 'outline'}
-            onClick={() => setMode('moduleSize')}
-            className="h-7 px-3 text-xs"
-          >
-            모듈크기 × 출력
-          </Button>
+        <div className="inline-flex rounded-full border bg-muted/40 p-1 shadow-sm">
+          {modeOptions.map(({ value, label, icon: Icon }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setMode(value)}
+              className={cn(
+                'flex h-7 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-all',
+                mode === value
+                  ? 'bg-background text-foreground shadow-sm ring-1 ring-border'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          ))}
         </div>
       </CardHeader>
       <CardContent>

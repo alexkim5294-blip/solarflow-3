@@ -3,6 +3,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useDashboard } from '@/hooks/useDashboard';
 import { useTurnover } from '@/hooks/useTurnover';
 import { useInventory } from '@/hooks/useInventory';
+import { useForecast } from '@/hooks/useForecast';
 import { usePermission } from '@/hooks/usePermission';
 import StrategicDashboard from '@/components/dashboard/StrategicDashboard';
 import {
@@ -63,6 +64,7 @@ export default function DashboardPage() {
 
   const turnover = useTurnover(selectedCompanyId, 90);
   const inventory = useInventory();
+  const forecast = useForecast();
 
   // 현재 모든 정의된 역할의 dashboardType='strategic'으로 통일 (operational은 예비 타입).
   // 추후 운영 뷰가 다시 필요해지면 여기에 분기 추가.
@@ -88,6 +90,7 @@ export default function DashboardPage() {
         priceTrend={priceTrend}
         inventory={{ data: inventory.data, loading: inventory.loading, error: inventory.error }}
         turnover={{ data: turnover.data, loading: turnover.loading, error: turnover.error }}
+        forecast={{ data: forecast.data, loading: forecast.loading, error: forecast.error }}
         outstanding={outstanding}
         longTermWarning={longTermWarning}
         longTermCritical={longTermCritical}

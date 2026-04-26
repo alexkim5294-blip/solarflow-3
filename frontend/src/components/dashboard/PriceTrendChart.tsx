@@ -10,9 +10,10 @@ import type { PriceTrend } from '@/types/dashboard';
 
 interface Props {
   data: PriceTrend;
+  compact?: boolean;
 }
 
-export default function PriceTrendChart({ data }: Props) {
+export default function PriceTrendChart({ data, compact = false }: Props) {
   const manufacturers = data.manufacturers || [];
   const [visibleMfgs, setVisibleMfgs] = useState<Set<string>>(
     new Set(manufacturers.slice(0, 5).map((m) => m.name))
@@ -47,7 +48,7 @@ export default function PriceTrendChart({ data }: Props) {
   return (
     <Card>
       <CardHeader className="py-3 px-4">
-        <CardTitle className="text-sm">단가 추이 (제조사별)</CardTitle>
+        <CardTitle className="text-sm">단가 추이</CardTitle>
       </CardHeader>
       <CardContent className="px-4 pb-3">
         {/* 제조사 필터 체크박스 */}
@@ -68,11 +69,11 @@ export default function PriceTrendChart({ data }: Props) {
         </div>
 
         {chartData.length === 0 ? (
-          <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
+          <div className={compact ? 'flex h-[180px] items-center justify-center text-sm text-muted-foreground' : 'flex h-[300px] items-center justify-center text-sm text-muted-foreground'}>
             데이터가 없습니다
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={300}>
+          <ResponsiveContainer width="100%" height={compact ? 180 : 300}>
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="period" tick={{ fontSize: 11 }} />

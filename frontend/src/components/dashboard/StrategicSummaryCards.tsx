@@ -11,10 +11,10 @@
  *
  * 마스킹보다 카드 제거가 더 명확 — "0원"으로 보이는 혼동 제거.
  */
-import { Package, PackageCheck, Truck, Shield, DollarSign, Wallet, Receipt } from 'lucide-react';
+import { PackageCheck, Truck, Shield, DollarSign, Receipt } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatUSD, formatKRW } from '@/lib/utils';
+import { formatKRW } from '@/lib/utils';
 import type { DashboardSummary, MonthlyRevenue } from '@/types/dashboard';
 
 interface Props {
@@ -35,10 +35,9 @@ function recentMonthsRevenueKrw(revenue: MonthlyRevenue | null, nMonths: number)
 
 export default function StrategicSummaryCards({ summary, revenue, flags }: Props) {
   const baseCards = [
-    { key: 'physical',  label: '총재고', value: `${summary.physical_mw.toFixed(1)}MW`,  icon: Package,      color: 'text-blue-600 bg-blue-50',     to: '/inventory' },
-    { key: 'available', label: '가용',   value: `${summary.available_mw.toFixed(1)}MW`, icon: PackageCheck, color: 'text-green-600 bg-green-50',   to: '/inventory' },
-    { key: 'incoming',  label: '미착품', value: `${summary.incoming_mw.toFixed(1)}MW`,  icon: Truck,        color: 'text-yellow-600 bg-yellow-50', to: '/inbound' },
-    { key: 'secured',   label: '총확보', value: `${summary.secured_mw.toFixed(1)}MW`,   icon: Shield,       color: 'text-purple-600 bg-purple-50', to: '/inventory' },
+    { key: 'available', label: '가용재고', value: `${summary.available_mw.toFixed(1)}MW`, icon: PackageCheck, color: 'text-emerald-600 bg-emerald-50', to: '/inventory' },
+    { key: 'incoming',  label: '미착품',   value: `${summary.incoming_mw.toFixed(1)}MW`,  icon: Truck,        color: 'text-amber-600 bg-amber-50',     to: '/inbound' },
+    { key: 'secured',   label: '총확보',   value: `${summary.secured_mw.toFixed(1)}MW`,   icon: Shield,       color: 'text-blue-600 bg-blue-50',       to: '/inventory' },
   ];
 
   const optionalCards: typeof baseCards = [];
@@ -64,26 +63,16 @@ export default function StrategicSummaryCards({ summary, revenue, flags }: Props
       to: '/orders?tab=receipts',
     });
   }
-  if (flags.showLcLimit) {
-    optionalCards.push({
-      key: 'lc',
-      label: 'LC 가용',
-      value: formatUSD(summary.lc_available_usd),
-      icon: Wallet,
-      color: 'text-sky-600 bg-sky-50',
-      to: '/banking',
-    });
-  }
+  void flags.showLcLimit;
 
   const cards = [...baseCards, ...optionalCards];
-  // 카드 수에 맞춰 xl 열 개수 조정 (4~7개)
+  // 카드 수에 맞춰 xl 열 개수 조정 (3~5개)
   const colClass: Record<number, string> = {
+    3: 'xl:grid-cols-3',
     4: 'xl:grid-cols-4',
     5: 'xl:grid-cols-5',
-    6: 'xl:grid-cols-6',
-    7: 'xl:grid-cols-7',
   };
-  const cols = colClass[cards.length] ?? 'xl:grid-cols-4';
+  const cols = colClass[cards.length] ?? 'xl:grid-cols-5';
 
   return (
     <div className={`grid grid-cols-2 gap-3 lg:grid-cols-4 ${cols}`}>

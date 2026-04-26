@@ -19,6 +19,7 @@ import TTForm from '@/components/procurement/TTForm';
 import DepositStatusPanel from '@/components/procurement/DepositStatusPanel';
 import PriceHistoryTable from '@/components/procurement/PriceHistoryTable';
 import PriceHistoryForm from '@/components/procurement/PriceHistoryForm';
+import ExcelToolbar from '@/components/excel/ExcelToolbar';
 import { PO_STATUS_LABEL, CONTRACT_TYPE_LABEL, CONTRACT_TYPES_ACTIVE, LC_STATUS_LABEL, TT_STATUS_LABEL } from '@/types/procurement';
 import type { PurchaseOrder, POLineItem, LCRecord, TTRemittance, PriceHistory, POStatus, ContractType, LCStatus, TTStatus } from '@/types/procurement';
 import type { Manufacturer, Bank } from '@/types/masters';
@@ -552,6 +553,7 @@ export default function ProcurementPage() {
                 </Select>
                 <Select value={blMfgFilter || 'all'} onValueChange={(v) => setBlMfgFilter(v === 'all' ? '' : (v ?? ''))}><SelectTrigger className="h-8 w-32 text-xs"><FT text={blMfgLabel} /></SelectTrigger><SelectContent><SelectItem value="all">전체 제조사</SelectItem>{manufacturers.map((m) => <SelectItem key={m.manufacturer_id} value={m.manufacturer_id}>{m.name_kr}</SelectItem>)}</SelectContent></Select>
                 <div className="flex-1" />
+                <ExcelToolbar type="inbound" onImportComplete={() => { reloadBL(); setBlsVersion(v => v + 1); }} />
                 <Button size="sm" onClick={() => openBLWork()}><Plus className="mr-1 h-4 w-4" />새로 등록</Button>
               </div>
               {blLoading ? <LoadingSpinner /> : (

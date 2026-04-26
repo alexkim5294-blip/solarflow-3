@@ -35,6 +35,20 @@ function FT({ text }: { text: string }) {
   return <span className="flex flex-1 text-left truncate" data-slot="select-value">{text}</span>;
 }
 
+const isFreeSpareAlloc = (a: InventoryAllocation) => a.notes?.startsWith('[무상스페어]') ?? false;
+
+function isLinkedFreeSpare(main: InventoryAllocation, candidate: InventoryAllocation): boolean {
+  if (candidate.alloc_id === main.alloc_id || !isFreeSpareAlloc(candidate)) return false;
+  if (candidate.company_id !== main.company_id || candidate.product_id !== main.product_id) return false;
+  if (candidate.purpose !== main.purpose) return false;
+  if (main.group_id && candidate.group_id) return main.group_id === candidate.group_id;
+  return (
+    (candidate.customer_name ?? '') === (main.customer_name ?? '') &&
+    (candidate.site_name ?? '') === (main.site_name ?? '') &&
+    (candidate.bl_id ?? '') === (main.bl_id ?? '')
+  );
+}
+
 export default function OrdersPage() {
   const selectedCompanyId = useAppStore((s) => s.selectedCompanyId);
 
@@ -72,6 +86,7 @@ export default function OrdersPage() {
     const linkedAllocId = params.get('linked_alloc_id') ?? undefined;
     const blId          = params.get('bl_id') ?? undefined;
     const expectedPrice = params.get('expected_price_per_wp');
+    const spareQty      = params.get('spare_qty');
 
     setPendingAllocId(allocId);
     if (linkedAllocId) setPendingLinkedAllocId(linkedAllocId);
@@ -85,6 +100,7 @@ export default function OrdersPage() {
       order_number: orderNo,
       bl_id: blId,
       expected_price_per_wp: expectedPrice ? Number(expectedPrice) : undefined,
+      spare_qty: spareQty ? Number(spareQty) : undefined,
     });
     setOrderFormOpen(true);
     // URL 정리 (파라미터 제거)
@@ -256,12 +272,13 @@ export default function OrdersPage() {
     //   - 예정 시 스페어 없었음 + 수주 시 새로 입력됨 → 신규 스페어 alloc 생성 후 confirmed
     if (createdOrderId && origAllocId && formData.product_id) {
       const spareQty = Number(formData.spare_qty) || 0;
-      // 같은 품목·법인의 pending 무상스페어 배정 탐색 (예정등록 시 자동 생성된 것)
-      const pendingList = await fetchWithAuth<Array<{ alloc_id: string; notes?: string }>>(
+      const originalAlloc = await fetchWithAuth<InventoryAllocation>(`/api/v1/inventory/allocations/${origAllocId}`);
+      // 같은 예약에 딸린 pending 무상스페어만 탐색 (다른 거래처의 무상스페어 오연결 방지)
+      const pendingList = await fetchWithAuth<InventoryAllocation[]>(
         `/api/v1/inventory/allocations?company_id=${selectedCompanyId}&product_id=${formData.product_id as string}&status=pending`
       );
 
-      const reservationSpare = pendingList.find(a => a.notes?.startsWith('[무상스페어]'));
+      const reservationSpare = pendingList.find((a) => isLinkedFreeSpare(originalAlloc, a));
 
       if (reservationSpare) {
         // 예정 시 스페어 있었음 → confirm 처리 (order_id 연결)
@@ -282,9 +299,10 @@ export default function OrdersPage() {
             quantity:      spareQty,
             capacity_kw:   spareCapKw,
             purpose:       'sale',
-            source_type:   'stock',
+            source_type:   formData.fulfillment_source === 'incoming' ? 'incoming' : 'stock',
             status:        'confirmed',
             order_id:      created.order_id,
+            bl_id:         formData.bl_id,
             free_spare_qty: 0,
             notes:         '[무상스페어]',
           }),

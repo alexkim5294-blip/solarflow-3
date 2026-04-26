@@ -31,6 +31,7 @@ export function ConstructionSiteCombobox({
   const [newLocation, setNewLocation] = useState('');
   const [newType, setNewType] = useState<'own' | 'epc'>('own');
   const [saving, setSaving] = useState(false);
+  const [createError, setCreateError] = useState('');
   const ref = useRef<HTMLDivElement>(null);
 
   // 외부 클릭 닫기
@@ -61,7 +62,12 @@ export function ConstructionSiteCombobox({
   };
 
   const handleCreate = async () => {
-    if (!newName.trim() || !companyId) return;
+    setCreateError('');
+    if (!companyId || companyId === 'all') {
+      setCreateError('현장을 등록할 법인을 먼저 선택해주세요.');
+      return;
+    }
+    if (!newName.trim()) return;
     setSaving(true);
     try {
       const body: Record<string, unknown> = {
@@ -72,10 +78,20 @@ export function ConstructionSiteCombobox({
       };
       if (newLocation.trim()) body.location = newLocation.trim();
 
-      const created = await fetchWithAuth<ConstructionSite>('/api/v1/construction-sites', {
+      const response = await fetchWithAuth<ConstructionSite | { status: string }>('/api/v1/construction-sites', {
         method: 'POST',
         body: JSON.stringify(body),
       });
+      let created = response as ConstructionSite;
+      if (!created.site_id) {
+        const refreshed = await fetchWithAuth<ConstructionSite[]>(`/api/v1/construction-sites?company_id=${companyId}`);
+        created = refreshed.find((site) =>
+          site.name === newName.trim() &&
+          (site.location ?? '') === (newLocation.trim() || '') &&
+          site.site_type === newType,
+        ) ?? refreshed.find((site) => site.name === newName.trim() && site.site_type === newType) as ConstructionSite;
+      }
+      if (!created?.site_id) throw new Error('created site missing id');
       onCreated?.(created);
       onChange(created.site_id, created.name);
       setOpen(false);
@@ -84,7 +100,7 @@ export function ConstructionSiteCombobox({
       setNewLocation('');
       setSearch('');
     } catch {
-      alert('현장 등록에 실패했습니다');
+      setCreateError('현장 등록에 실패했습니다. 필수값과 법인 선택을 확인해주세요.');
     } finally {
       setSaving(false);
     }
@@ -179,6 +195,11 @@ export function ConstructionSiteCombobox({
           ) : (
             <div className="border-t p-3 space-y-2">
               <p className="text-xs font-medium text-muted-foreground">신규 현장 등록</p>
+              {createError && (
+                <p className="rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+                  {createError}
+                </p>
+              )}
               <div className="space-y-1.5">
                 <Label className="text-xs">현장명 *</Label>
                 <Input

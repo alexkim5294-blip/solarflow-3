@@ -112,7 +112,7 @@ export const MANAGEMENT_CATEGORY_LABEL: Record<ManagementCategory, string> = {
 };
 
 export const FULFILLMENT_SOURCE_LABEL: Record<FulfillmentSource, string> = {
-  stock: '현재재고',
+  stock: '실재고',
   incoming: '미착품',
 };
 

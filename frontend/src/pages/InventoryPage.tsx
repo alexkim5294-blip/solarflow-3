@@ -209,6 +209,7 @@ export default function InventoryPage() {
     if (linkedAllocId) params.set('linked_alloc_id', linkedAllocId);
     if (alloc.bl_id) params.set('bl_id', alloc.bl_id);
     if (alloc.expected_price_per_wp) params.set('expected_price_per_wp', String(alloc.expected_price_per_wp));
+    if (alloc.free_spare_qty && alloc.free_spare_qty > 0) params.set('spare_qty', String(alloc.free_spare_qty));
     navigate(`/orders?${params.toString()}`);
   };
 

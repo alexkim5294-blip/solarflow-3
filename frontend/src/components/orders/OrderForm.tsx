@@ -61,6 +61,7 @@ export interface OrderPrefillData {
   order_number?: string;        // 고객 발주번호
   bl_id?: string;               // 사용예약에서 이어받은 BL (원가 추적용)
   expected_price_per_wp?: number;
+  spare_qty?: number;
 }
 
 interface Props {
@@ -109,10 +110,13 @@ export default function OrderForm({ open, onOpenChange, onSubmit, editData, pref
   const selectedProductId = watch('product_id');
   const selectedProduct = products.find((p) => p.product_id === selectedProductId);
   const quantity = watch('quantity') || 0;
+  const spareQty = Number(watch('spare_qty')) || 0;
   const capacityKw = selectedProduct ? quantity * selectedProduct.wattage_kw : 0;
   const fulfillmentSource = watch('fulfillment_source');
-  const productMfg = (p?: Product | null) =>
-    p?.manufacturers ?? manufacturers.find((m) => m.manufacturer_id === p?.manufacturer_id) ?? p?.manufacturer_name;
+  const productMfg = (p?: Product | null) => {
+    if (p?.manufacturers?.short_name || p?.manufacturers?.name_kr) return p.manufacturers;
+    return manufacturers.find((m) => m.manufacturer_id === p?.manufacturer_id) ?? p?.manufacturer_name;
+  };
   const productModuleText = (p?: Product | null) => p ? moduleLabel(productMfg(p), p.spec_wp) : '—';
   const productOptionText = (p?: Product | null) => p ? `${productModuleText(p)} | ${p.product_code} | ${p.product_name}` : '';
   // 가용재고 배정 → 수주 자동 입력 모드 (일부 필드 잠금 + amber 표시)
@@ -178,7 +182,7 @@ export default function OrderForm({ open, onOpenChange, onSubmit, editData, pref
     }).then((result) => {
       const item = selectedProductId ? result.items.find((it) => it.product_id === selectedProductId) : undefined;
       if (fulfillmentSource === 'stock') {
-        setInventoryInfo(`현재 가용재고: ${(item?.available_kw ?? result.summary.total_available_kw ?? 0).toFixed(1)} kW`);
+        setInventoryInfo(`실재고 가용: ${(item?.available_kw ?? result.summary.total_available_kw ?? 0).toFixed(1)} kW`);
       } else {
         setInventoryInfo(`가용 미착품: ${(item?.available_incoming_kw ?? 0).toFixed(1)} kW`);
       }
@@ -228,10 +232,10 @@ export default function OrderForm({ open, onOpenChange, onSubmit, editData, pref
           site_id: '',
           site_name: prefillData.site_name ?? '',
           site_address: '', site_contact: '', site_phone: '',
-          payment_terms: '', deposit_rate: '', delivery_due: '', spare_qty: '', memo: '',
+          payment_terms: '', deposit_rate: '', delivery_due: '', spare_qty: prefillData.spare_qty ?? '', memo: '',
         });
         setQtyDisplay(prefillData.quantity ? prefillData.quantity.toLocaleString('ko-KR') : '');
-        setSpareQtyDisplay('');
+        setSpareQtyDisplay(prefillData.spare_qty ? prefillData.spare_qty.toLocaleString('ko-KR') : '');
         setBlId(prefillData.bl_id ?? '');
       } else {
         const today = new Date().toISOString().slice(0, 10);
@@ -264,11 +268,12 @@ export default function OrderForm({ open, onOpenChange, onSubmit, editData, pref
       ...data,
       company_id: selectedCompanyId,
       capacity_kw: capacityKw,
+      status: editData?.status ?? 'received',
     };
     if (blId) payload.bl_id = blId;
     if (!data.order_number) delete payload.order_number;
     if (data.deposit_rate === '' || data.deposit_rate === undefined) delete payload.deposit_rate;
-    if (data.spare_qty === '' || data.spare_qty === undefined) delete payload.spare_qty;
+    if (data.spare_qty === '' || data.spare_qty === undefined || Number(data.spare_qty) <= 0) delete payload.spare_qty;
     if (!data.delivery_due) delete payload.delivery_due;
     try {
       await onSubmit(payload);
@@ -491,7 +496,7 @@ export default function OrderForm({ open, onOpenChange, onSubmit, editData, pref
 
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5">
-              <Label>수량 *</Label>
+              <Label>유상 수량 *</Label>
               <Input
                 type="text"
                 inputMode="numeric"
@@ -505,7 +510,12 @@ export default function OrderForm({ open, onOpenChange, onSubmit, editData, pref
                 placeholder="0"
               />
               {isPrefill && (
-                <p className="text-[10px] text-muted-foreground">배정 수량 자동 입력 — 변경 가능</p>
+                <p className="text-[10px] text-muted-foreground">예약 유상 수량 자동 입력 — 변경 가능</p>
+              )}
+              {spareQty > 0 && (
+                <p className="text-[10px] text-orange-600">
+                  무상 {spareQty.toLocaleString('ko-KR')} EA 별도 · 총 공급 {(Number(quantity) + spareQty).toLocaleString('ko-KR')} EA
+                </p>
               )}
               {errors.quantity && <p className="text-xs text-destructive">{errors.quantity.message}</p>}
             </div>
@@ -534,14 +544,7 @@ export default function OrderForm({ open, onOpenChange, onSubmit, editData, pref
 
           {/* 공사현장 선택 */}
           <div className="space-y-1.5">
-            <Label className="flex items-center gap-1">
-              공사현장
-              {!watch('site_id') && (
-                <span className="text-[10px] text-amber-600 font-normal ml-1">
-                  ⚠ 미입력 — 나중에 꼭 보완하세요
-                </span>
-              )}
-            </Label>
+            <Label>공사현장 <span className="text-xs font-normal text-muted-foreground">(선택)</span></Label>
             <ConstructionSiteCombobox
               sites={sites}
               value={watch('site_id') ?? ''}
@@ -553,6 +556,7 @@ export default function OrderForm({ open, onOpenChange, onSubmit, editData, pref
               onCreated={(site) => setSites(prev => [...prev, site])}
               placeholder="현장 검색 또는 신규 등록…"
             />
+            <p className="text-[10px] text-muted-foreground">현장 검색을 위해 공사현장을 입력할 수 있습니다.</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -567,7 +571,11 @@ export default function OrderForm({ open, onOpenChange, onSubmit, editData, pref
 
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5"><Label>결제조건</Label><Input {...register('payment_terms')} placeholder="자유기재" /></div>
-            <div className="space-y-1.5"><Label>선수금율 (%)</Label><Input type="number" step="0.1" {...register('deposit_rate')} /></div>
+            <div className="space-y-1.5">
+              <Label>선수금율 (%)</Label>
+              <Input type="number" step="0.1" {...register('deposit_rate')} />
+              <p className="text-[10px] text-muted-foreground">조건 기록용 · 실제 입금은 수금 탭에서 매칭</p>
+            </div>
             <div className="space-y-1.5"><Label>납기일</Label><DateInput value={watch('delivery_due') ?? ''} onChange={(v) => setValue('delivery_due', v, { shouldDirty: true })} /></div>
           </div>
 

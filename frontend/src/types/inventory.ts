@@ -6,6 +6,8 @@ export interface InventoryResponse {
 }
 
 export interface InventoryItem {
+  company_id?: string;
+  company_name?: string;
   product_id: string;
   product_code: string;
   product_name: string;

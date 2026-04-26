@@ -347,7 +347,7 @@ export default function OrderForm({ open, onOpenChange, onSubmit, onPrefillCance
     }
 
     let fulfillmentSourceForSave = data.fulfillment_source;
-    if (isPrefill && data.fulfillment_source === 'stock' && selectedProductId) {
+    if (isPrefill && selectedProductId) {
       try {
         const inv = await fetchWithAuth<InventoryResponse>('/api/v1/calc/inventory', {
           method: 'POST',
@@ -355,7 +355,10 @@ export default function OrderForm({ open, onOpenChange, onSubmit, onPrefillCance
         });
         const item = inv.items.find((it) => it.product_id === selectedProductId);
         const stockKw = item?.available_kw ?? 0;
-        if (stockKw + 0.001 < capacityKw) {
+        if (data.fulfillment_source === 'incoming' && stockKw + 0.001 >= capacityKw) {
+          fulfillmentSourceForSave = 'stock';
+          setValue('fulfillment_source', 'stock', { shouldDirty: true });
+        } else if (data.fulfillment_source === 'stock' && stockKw + 0.001 < capacityKw) {
           const incomingKw = item?.available_incoming_kw ?? 0;
           const useIncoming = window.confirm(
             `현재 가용 실재고가 부족합니다.\n` +

@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '@/stores/appStore';
-import { fetchCalc } from '@/lib/companyUtils';
+import { fetchWithAuth } from '@/lib/api';
+import { isAllCompanies } from '@/lib/companyUtils';
 import type { InventoryResponse } from '@/types/inventory';
+import type { Company } from '@/types/masters';
 
 interface UseInventoryOptions {
   manufacturerId?: string;
@@ -21,11 +23,26 @@ function mergeInventory(rs: InventoryResponse[]): InventoryResponse {
   };
 }
 
+function withCompany(result: InventoryResponse, company?: Company): InventoryResponse {
+  if (!company) return result;
+  return {
+    ...result,
+    items: result.items.map((item) => ({
+      ...item,
+      company_id: company.company_id,
+      company_name: company.company_name,
+    })),
+  };
+}
+
 export function useInventory(opts: UseInventoryOptions = {}) {
   const [data, setData] = useState<InventoryResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const selectedCompanyId = useAppStore((s) => s.selectedCompanyId);
+  const companies = useAppStore((s) => s.companies);
+  const companiesLoaded = useAppStore((s) => s.companiesLoaded);
+  const loadCompanies = useAppStore((s) => s.loadCompanies);
 
   const load = useCallback(async () => {
     if (!selectedCompanyId) {
@@ -41,9 +58,31 @@ export function useInventory(opts: UseInventoryOptions = {}) {
       if (opts.manufacturerId) extra.manufacturer_id = opts.manufacturerId;
       if (opts.productId) extra.product_id = opts.productId;
 
-      const result = await fetchCalc<InventoryResponse>(
-        selectedCompanyId, '/api/v1/calc/inventory', extra, mergeInventory,
-      );
+      if (!companiesLoaded) await loadCompanies();
+      const activeCompanies = useAppStore.getState().companies;
+
+      let result: InventoryResponse;
+      if (isAllCompanies(selectedCompanyId)) {
+        const results = await Promise.all(
+          activeCompanies.map((company) =>
+            fetchWithAuth<InventoryResponse>('/api/v1/calc/inventory', {
+              method: 'POST',
+              body: JSON.stringify({ company_id: company.company_id, ...extra }),
+            })
+              .then((response) => withCompany(response, company))
+              .catch(() => null),
+          ),
+        );
+        result = mergeInventory(results.filter(Boolean) as InventoryResponse[]);
+      } else {
+        const company = activeCompanies.find((c) => c.company_id === selectedCompanyId)
+          ?? companies.find((c) => c.company_id === selectedCompanyId);
+        const response = await fetchWithAuth<InventoryResponse>('/api/v1/calc/inventory', {
+          method: 'POST',
+          body: JSON.stringify({ company_id: selectedCompanyId, ...extra }),
+        });
+        result = withCompany(response, company);
+      }
       setData(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '재고 조회 실패';
@@ -52,7 +91,7 @@ export function useInventory(opts: UseInventoryOptions = {}) {
         : msg);
     }
     setLoading(false);
-  }, [selectedCompanyId, opts.manufacturerId, opts.productId]);
+  }, [selectedCompanyId, opts.manufacturerId, opts.productId, companies, companiesLoaded, loadCompanies]);
 
   useEffect(() => { load(); }, [load]);
 

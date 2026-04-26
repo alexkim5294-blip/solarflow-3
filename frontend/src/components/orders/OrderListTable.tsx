@@ -1,5 +1,6 @@
 import EmptyState from '@/components/common/EmptyState';
 import FulfillmentSourceBadge from './FulfillmentSourceBadge';
+import { Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { cn, moduleLabel } from '@/lib/utils';
 import { formatDate, formatNumber, formatKw } from '@/lib/utils';
 import {
@@ -11,6 +12,9 @@ interface Props {
   items: Order[];
   onSelect: (item: Order) => void;
   onNew: () => void;
+  onEdit?: (item: Order) => void;
+  onDelete?: (item: Order) => void;
+  onCancelToReservation?: (item: Order) => void;
 }
 
 function StatusBadge({ status }: { status: OrderStatus }) {
@@ -21,7 +25,7 @@ function StatusBadge({ status }: { status: OrderStatus }) {
   );
 }
 
-export default function OrderListTable({ items, onSelect, onNew }: Props) {
+export default function OrderListTable({ items, onSelect, onNew, onEdit, onDelete, onCancelToReservation }: Props) {
   if (items.length === 0) return <EmptyState message="등록된 수주가 없습니다" actionLabel="새로 등록" onAction={onNew} />;
 
   return (
@@ -34,11 +38,13 @@ export default function OrderListTable({ items, onSelect, onNew }: Props) {
             <th className="p-3 text-right font-medium">수량 / 단가</th>
             <th className="p-3 text-left font-medium text-muted-foreground">납기 / 현장</th>
             <th className="p-3 text-center font-medium text-muted-foreground w-[80px]">상태</th>
+            <th className="p-3 text-center font-medium text-muted-foreground w-[150px]">작업</th>
           </tr>
         </thead>
         <tbody>
           {items.map((o) => {
             const remaining = o.remaining_qty ?? (o.quantity - (o.shipped_qty ?? 0));
+            const canReturnReservation = (o.shipped_qty ?? 0) <= 0 && o.status !== 'cancelled';
             const moduleText = o.manufacturer_name || o.spec_wp
               ? moduleLabel(o.manufacturer_name, o.spec_wp)
               : undefined;
@@ -48,6 +54,9 @@ export default function OrderListTable({ items, onSelect, onNew }: Props) {
                 <td className="p-3 align-top">
                   <div className="font-mono font-semibold">{o.order_number || '—'}</div>
                   <div className="font-medium mt-0.5">{o.customer_name ?? '—'}</div>
+                  {o.company_name && (
+                    <div className="text-[10px] text-muted-foreground mt-0.5">{o.company_name}</div>
+                  )}
                   <div className="text-[10px] text-muted-foreground mt-0.5">{formatDate(o.order_date)}</div>
                 </td>
 
@@ -101,6 +110,44 @@ export default function OrderListTable({ items, onSelect, onNew }: Props) {
                 {/* 상태 */}
                 <td className="p-3 text-center align-top">
                   <StatusBadge status={o.status} />
+                </td>
+
+                {/* 작업 */}
+                <td className="p-3 text-center align-top" onClick={(e) => e.stopPropagation()}>
+                  <div className="inline-flex items-center justify-center gap-1">
+                    {onEdit && (
+                      <button
+                        type="button"
+                        title="수정"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded border text-muted-foreground hover:bg-muted hover:text-foreground"
+                        onClick={() => onEdit(o)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {onCancelToReservation && (
+                      <button
+                        type="button"
+                        title={canReturnReservation ? '예약으로 복귀' : '출고된 수주는 예약으로 복귀할 수 없습니다'}
+                        disabled={!canReturnReservation}
+                        className="inline-flex h-7 items-center gap-1 rounded border px-2 text-[11px] text-sky-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        onClick={() => onCancelToReservation(o)}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        예약복귀
+                      </button>
+                    )}
+                    {onDelete && (
+                      <button
+                        type="button"
+                        title="삭제"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded border border-red-200 text-red-600 hover:bg-red-50"
+                        onClick={() => onDelete(o)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             );

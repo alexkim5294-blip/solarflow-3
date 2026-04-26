@@ -277,8 +277,12 @@ export default function AvailInventoryTable({
         </thead>
         <tbody>
           {items.map((item) => {
-            const isOpen = expandedIds.has(item.product_id);
-            const itemAllocs = allocations.filter((a) => a.product_id === item.product_id);
+            const itemKey = `${item.company_id ?? 'single'}:${item.product_id}`;
+            const isOpen = expandedIds.has(itemKey);
+            const itemAllocs = allocations.filter((a) =>
+              a.product_id === item.product_id &&
+              (!item.company_id || a.company_id === item.company_id)
+            );
             const saleAllocs = itemAllocs.filter(isSale);
             const constAllocs = itemAllocs.filter(isConstruction);
             const mainAllocs = itemAllocs.filter((a) => !isFreeSpare(a));
@@ -292,12 +296,12 @@ export default function AvailInventoryTable({
             const constKw = constAllocs.reduce((s, a) => s + (a.capacity_kw ?? 0), 0);
 
             return (
-              <Fragment key={item.product_id}>
+              <Fragment key={itemKey}>
                 {/* 품목 행 */}
                 <tr
-                  key={item.product_id}
+                  key={itemKey}
                   className="border-t hover:bg-muted/20 cursor-pointer transition-colors"
-                  onClick={() => toggle(item.product_id)}
+                  onClick={() => toggle(itemKey)}
                 >
                   {/* 토글 */}
                   <td className="p-2 text-center text-muted-foreground">
@@ -313,6 +317,11 @@ export default function AvailInventoryTable({
                       {moduleLabel(item.manufacturer_name, item.spec_wp)}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
+                      {item.company_name && (
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700">
+                          {item.company_name}
+                        </span>
+                      )}
                       <span className="font-mono text-[10px] text-muted-foreground">
                         {item.product_code}
                       </span>
@@ -389,7 +398,7 @@ export default function AvailInventoryTable({
 
                 {/* 펼침 행 */}
                 {isOpen && (
-                  <tr key={`${item.product_id}-expand`} className="border-t bg-muted/5">
+                  <tr key={`${itemKey}-expand`} className="border-t bg-muted/5">
                     <td colSpan={8} className="px-8 py-3">
                       <div className="space-y-3">
                         {itemAllocs.length === 0 && (

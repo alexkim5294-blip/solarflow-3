@@ -25,7 +25,7 @@ import SaleSummaryCards from '@/components/outbound/SaleSummaryCards';
 import type { InventoryAllocation } from '@/components/inventory/AllocationForm';
 import {
   ORDER_STATUS_LABEL, MANAGEMENT_CATEGORY_LABEL,
-  type OrderStatus, type ManagementCategory, type Receipt,
+  type Order, type OrderStatus, type ManagementCategory, type Receipt,
 } from '@/types/orders';
 import { OUTBOUND_STATUS_LABEL, USAGE_CATEGORY_LABEL, type OutboundStatus, type UsageCategory } from '@/types/outbound';
 import type { Partner, Manufacturer } from '@/types/masters';
@@ -166,6 +166,10 @@ export default function OrdersPage() {
   const [deletingReceipt, setDeletingReceipt] = useState<Receipt | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
+  const [orderActionLoading, setOrderActionLoading] = useState(false);
+  const [orderActionError, setOrderActionError] = useState('');
 
   // 마스터 데이터
   const [partners, setPartners] = useState<Partner[]>([]);
@@ -224,6 +228,7 @@ export default function OrdersPage() {
     const origLinkedAllocId  = pendingLinkedAllocId;
 
     const createdOrderId = created?.order_id;
+    const resolvedSource = formData.fulfillment_source === 'incoming' ? 'incoming' : 'stock';
 
     // ① 메인 배정 confirmed + order_id 설정. 일부 수주이면 잔량 처리 선택
     if (origAllocId && created?.order_id) {
@@ -240,7 +245,7 @@ export default function OrdersPage() {
           status: 'confirmed',
           quantity: orderQty,
           capacity_kw: orderQty * unitKw,
-          source_type: formData.fulfillment_source === 'incoming' ? 'incoming' : originalAlloc.source_type,
+          source_type: resolvedSource,
         }),
       });
 
@@ -261,7 +266,7 @@ export default function OrdersPage() {
               quantity: remainingQty,
               capacity_kw: remainingQty * unitKw,
               purpose: originalAlloc.purpose,
-              source_type: formData.fulfillment_source === 'incoming' ? 'incoming' : originalAlloc.source_type,
+              source_type: resolvedSource,
               customer_name: originalAlloc.customer_name,
               site_name: originalAlloc.site_name,
               site_id: originalAlloc.site_id,
@@ -320,7 +325,7 @@ export default function OrdersPage() {
             quantity:      spareQty,
             capacity_kw:   spareCapKw,
             purpose:       'sale',
-            source_type:   formData.fulfillment_source === 'incoming' ? 'incoming' : 'stock',
+            source_type:   resolvedSource,
             status:        'confirmed',
             order_id:      created.order_id,
             bl_id:         formData.bl_id,
@@ -332,6 +337,92 @@ export default function OrdersPage() {
     }
 
     reloadOrders();
+  };
+
+  const handleUpdateOrder = async (formData: Record<string, unknown>) => {
+    if (!editingOrder) return;
+    await fetchWithAuth(`/api/v1/orders/${editingOrder.order_id}`, {
+      method: 'PUT',
+      body: JSON.stringify(formData),
+    });
+    setEditingOrder(null);
+    reloadOrders();
+  };
+
+  const handleDeleteOrder = async () => {
+    if (!deletingOrder) return;
+    setOrderActionLoading(true);
+    setOrderActionError('');
+    try {
+      await fetchWithAuth(`/api/v1/orders/${deletingOrder.order_id}`, { method: 'DELETE' });
+      setDeletingOrder(null);
+      reloadOrders();
+    } catch (err) {
+      setOrderActionError(err instanceof Error ? err.message : '수주 삭제에 실패했습니다');
+    }
+    setOrderActionLoading(false);
+  };
+
+  const purposeFromOrder = (order: Order): InventoryAllocation['purpose'] => {
+    if (order.management_category === 'construction' || order.management_category === 'repowering') return 'construction_own';
+    if (order.management_category === 'other') return 'other';
+    return 'sale';
+  };
+
+  const handleCancelOrderToReservation = async (order: Order) => {
+    if ((order.shipped_qty ?? 0) > 0) {
+      setOrderActionError('이미 출고된 수주는 예약으로 복귀할 수 없습니다. 출고 취소 흐름을 먼저 진행해주세요.');
+      return;
+    }
+    if (!window.confirm('수주를 취소하고 같은 수량을 가용재고 예약으로 되돌릴까요?')) return;
+
+    setOrderActionLoading(true);
+    setOrderActionError('');
+    try {
+      const linkedAllocs = await fetchWithAuth<InventoryAllocation[]>(
+        `/api/v1/inventory/allocations?company_id=${order.company_id}&product_id=${order.product_id}`
+      ).then((list) => list.filter((alloc) => alloc.order_id === order.order_id));
+
+      await fetchWithAuth(`/api/v1/orders/${order.order_id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: 'cancelled' }),
+      });
+
+      if (linkedAllocs.length > 0) {
+        await Promise.all(linkedAllocs.map((alloc) =>
+          fetchWithAuth(`/api/v1/inventory/allocations/${alloc.alloc_id}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              status: 'pending',
+              source_type: order.fulfillment_source === 'incoming' ? 'incoming' : 'stock',
+            }),
+          })
+        ));
+      } else {
+        await fetchWithAuth('/api/v1/inventory/allocations', {
+          method: 'POST',
+          body: JSON.stringify({
+            company_id: order.company_id,
+            product_id: order.product_id,
+            quantity: order.remaining_qty ?? order.quantity,
+            capacity_kw: order.capacity_kw,
+            purpose: purposeFromOrder(order),
+            source_type: order.fulfillment_source === 'incoming' ? 'incoming' : 'stock',
+            customer_name: order.customer_name,
+            site_name: order.site_name,
+            site_id: order.site_id,
+            expected_price_per_wp: order.unit_price_wp,
+            free_spare_qty: order.spare_qty ?? 0,
+            bl_id: order.bl_id,
+            status: 'pending',
+          }),
+        });
+      }
+      reloadOrders();
+    } catch (err) {
+      setOrderActionError(err instanceof Error ? err.message : '예약 복귀 처리에 실패했습니다');
+    }
+    setOrderActionLoading(false);
   };
 
   const handlePrefillCancel = () => {
@@ -379,7 +470,7 @@ export default function OrdersPage() {
 
   return (
     <div className="p-6 space-y-4">
-      <h1 className="text-lg font-semibold">수주/수금</h1>
+      <h1 className="text-lg font-semibold">수주</h1>
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList>
@@ -435,7 +526,15 @@ export default function OrdersPage() {
               items={orders}
               onSelect={(o) => setSelectedOrder(o.order_id)}
               onNew={() => setOrderFormOpen(true)}
+              onEdit={(o) => { setOrderActionError(''); setEditingOrder(o); }}
+              onDelete={(o) => { setOrderActionError(''); setDeletingOrder(o); }}
+              onCancelToReservation={handleCancelOrderToReservation}
             />
+          )}
+          {orderActionError && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {orderActionError}
+            </div>
           )}
         </TabsContent>
 
@@ -580,6 +679,12 @@ export default function OrdersPage() {
         onPrefillCancel={handlePrefillCancel}
         prefillData={orderFormPrefill}
       />
+      <OrderForm
+        open={!!editingOrder}
+        onOpenChange={(o) => { if (!o) setEditingOrder(null); }}
+        onSubmit={handleUpdateOrder}
+        editData={editingOrder}
+      />
       <OutboundForm open={obFormOpen} onOpenChange={setObFormOpen} onSubmit={handleCreateOutbound} />
       <ReceiptForm
         open={receiptFormOpen}
@@ -594,6 +699,15 @@ export default function OrdersPage() {
         description={deletingReceipt ? `${deletingReceipt.customer_name ?? ''} ${deletingReceipt.amount.toLocaleString()}원 수금을 삭제합니다. 연결된 매칭도 함께 제거됩니다.` : ''}
         onConfirm={handleDeleteReceipt}
         loading={deleteLoading}
+      />
+      <ConfirmDialog
+        open={!!deletingOrder}
+        onOpenChange={(o) => { if (!o) setDeletingOrder(null); }}
+        title="수주 삭제"
+        description={deletingOrder ? `${deletingOrder.order_number ?? deletingOrder.order_id.slice(0, 8)} 수주를 삭제합니다. 연결된 출고가 있으면 삭제가 제한될 수 있습니다.` : ''}
+        onConfirm={handleDeleteOrder}
+        loading={orderActionLoading}
+        variant="destructive"
       />
     </div>
   );

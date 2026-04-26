@@ -14,11 +14,13 @@ const LCPage = lazy(() => import('@/pages/LCPage'));
 const OutboundPage = lazy(() => import('@/pages/OutboundPage'));
 const OrdersPage = lazy(() => import('@/pages/OrdersPage'));
 const CustomsPage = lazy(() => import('@/pages/CustomsPage'));
+const SalesAnalysisPage = lazy(() => import('@/pages/SalesAnalysisPage'));
 const BankingPage = lazy(() => import('@/pages/BankingPage'));
 const ApprovalPage = lazy(() => import('@/pages/ApprovalPage'));
 const MemoPage = lazy(() => import('@/pages/MemoPage'));
 const SearchPage = lazy(() => import('@/pages/SearchPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const CompanyPage = lazy(() => import('@/pages/masters/CompanyPage'));
 const ManufacturerPage = lazy(() => import('@/pages/masters/ManufacturerPage'));
 const ProductPage = lazy(() => import('@/pages/masters/ProductPage'));
@@ -47,6 +49,7 @@ export default function App() {
             <Route element={<ProtectedRoute />}>
               <Route element={<AppLayout />}>
                 <Route index element={<Navigate to="/inventory" replace />} />
+                <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/inventory" element={<InventoryPage />} />
                 <Route path="/masters/companies" element={<CompanyPage />} />
                 <Route path="/masters/manufacturers" element={<ManufacturerPage />} />
@@ -61,6 +64,7 @@ export default function App() {
                 <Route path="/outbound" element={<OutboundPage />} />
                 <Route path="/orders" element={<OrdersPage />} />
                 <Route path="/customs" element={<CustomsPage />} />
+                <Route path="/sales-analysis" element={<SalesAnalysisPage />} />
                 <Route path="/banking" element={<BankingPage />} />
                 <Route path="/search" element={<SearchPage />} />
                 <Route path="/memo" element={<MemoPage />} />

@@ -24,9 +24,9 @@ import type { Role } from '@/config/permissions';
 import { useEffect } from 'react';
 
 const analysisSections: { label: string; path: string; icon: React.ElementType; menu: MenuKey }[] = [
-  { label: '대시보드',       path: '/',        icon: LayoutDashboard, menu: 'dashboard' },
+  { label: '대시보드',       path: '/dashboard', icon: LayoutDashboard, menu: 'dashboard' },
   { label: 'LC 한도/만기',   path: '/banking', icon: Landmark,        menu: 'banking' },
-  { label: '매출/이익 분석', path: '/customs', icon: BarChart3,        menu: 'customs' },
+  { label: '매출/이익 분석', path: '/sales-analysis', icon: BarChart3, menu: 'customs' },
 ];
 
 // 마스터 관리 서브 메뉴 (admin/operator만 접근)
@@ -92,7 +92,7 @@ export default function TopNav() {
   const isPurchase  = ['/procurement', '/lc', '/inbound'].some(p => pathname === p || pathname.startsWith(p + '/'));
   const isInventory = pathname === '/inventory' || pathname.startsWith('/inventory/');
   const isSales     = ['/orders', '/outbound'].some(p => pathname === p || pathname.startsWith(p + '/'));
-  const isAnalysis  = pathname === '/' || pathname.startsWith('/banking') || pathname.startsWith('/customs');
+  const isAnalysis  = pathname.startsWith('/dashboard') || pathname.startsWith('/banking') || pathname.startsWith('/customs') || pathname.startsWith('/sales-analysis');
 
   const showPurchase  = canAccessMenu(r, 'procurement') || canAccessMenu(r, 'lc') || canAccessMenu(r, 'inbound');
   const showInventory = canAccessMenu(r, 'inventory');

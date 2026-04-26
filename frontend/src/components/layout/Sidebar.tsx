@@ -43,9 +43,9 @@ const salesItems: MenuItem[] = [
 
 // 현황/분석
 const analysisItems: MenuItem[] = [
-  { icon: LayoutDashboard, label: '대시보드',       path: '/' },                                          // 전체 공개 (내용은 권한별 분기)
+  { icon: LayoutDashboard, label: '대시보드',       path: '/dashboard' },                                 // 전체 공개 (내용은 권한별 분기)
   { icon: Landmark,        label: 'LC 한도/만기',   path: '/banking', roles: ['admin', 'operator', 'executive'] },
-  { icon: Calculator,      label: '매출/이익 분석', path: '/customs', roles: ['admin', 'operator', 'executive'] },
+  { icon: Calculator,      label: '매출/이익 분석', path: '/sales-analysis', roles: ['admin', 'operator', 'executive'] },
 ];
 
 const masterItem: MenuItem = {

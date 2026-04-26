@@ -9,6 +9,7 @@ import type {
   PriceTrend, AlertItem, CompanySummaryRow,
 } from '@/types/dashboard';
 import type { LCLimitTimeline } from '@/types/banking';
+import type { SaleListItem } from '@/types/outbound';
 
 // 비유: 대시보드 데이터를 독립적으로 조회. 하나 실패해도 나머지는 표시.
 
@@ -39,15 +40,6 @@ export interface CustomerAnalysis {
   };
 }
 
-interface MarginAnalysis {
-  months: {
-    month: string;
-    revenue_krw: number;
-    margin_krw: number;
-    margin_rate: number;
-  }[];
-}
-
 interface PriceTrendResponse {
   manufacturers: {
     name: string;
@@ -70,21 +62,6 @@ function mergeInventory(rs: InventoryResponse[]): InventoryResponse {
       total_secured_kw: rs.reduce((s, r) => s + r.summary.total_secured_kw, 0),
     },
     calculated_at: rs[0]?.calculated_at ?? new Date().toISOString(),
-  };
-}
-
-function mergeMargin(rs: MarginAnalysis[]): MarginAnalysis {
-  const map = new Map<string, { revenue_krw: number; margin_krw: number }>();
-  for (const r of rs) {
-    for (const m of r.months || []) {
-      const prev = map.get(m.month) || { revenue_krw: 0, margin_krw: 0 };
-      map.set(m.month, { revenue_krw: prev.revenue_krw + m.revenue_krw, margin_krw: prev.margin_krw + m.margin_krw });
-    }
-  }
-  return {
-    months: Array.from(map.entries()).map(([month, v]) => ({
-      month, ...v, margin_rate: v.revenue_krw ? (v.margin_krw / v.revenue_krw) * 100 : 0,
-    })),
   };
 }
 
@@ -156,6 +133,18 @@ function mergeLCTimeline(rs: LCLimitTimeline[]): LCLimitTimeline {
   };
 }
 
+function salesToMonthlyRevenue(sales: SaleListItem[]): MonthlyRevenue {
+  const map = new Map<string, { month: string; revenue_krw: number; margin_krw: number; margin_rate: number }>();
+  for (const item of sales) {
+    const date = item.outbound_date ?? item.order_date ?? '';
+    const month = date ? date.slice(0, 7) : '날짜 없음';
+    const prev = map.get(month) ?? { month, revenue_krw: 0, margin_krw: 0, margin_rate: 0 };
+    prev.revenue_krw += item.sale.supply_amount ?? 0;
+    map.set(month, prev);
+  }
+  return { months: Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month)) };
+}
+
 export function useDashboard(companyId: string | null, userRole: string) {
   const [summary, setSummary] = useState<DashboardSectionState<DashboardSummary>>(makeSectionState());
   const [revenue, setRevenue] = useState<DashboardSectionState<MonthlyRevenue>>(makeSectionState());
@@ -187,17 +176,17 @@ export function useDashboard(companyId: string | null, userRole: string) {
 
     // D-060: fetchCalc가 "all"이면 법인별 호출 후 merge 처리
     const fetchInventory = () => fetchCalc<InventoryResponse>(companyId, '/api/v1/calc/inventory', {}, mergeInventory);
-    const fetchMargin = () => fetchCalc<MarginAnalysis>(companyId, '/api/v1/calc/margin-analysis', {}, mergeMargin);
     const fetchCustomerAnalysis = () => fetchCalc<CustomerAnalysis>(companyId, '/api/v1/calc/customer-analysis', {}, mergeCustomer);
     const fetchPriceTrendApi = () => fetchCalc<PriceTrendResponse>(companyId, '/api/v1/calc/price-trend', {}, mergePriceTrend);
     const fetchLCTimeline = () => fetchCalc<LCLimitTimeline>(companyId, '/api/v1/calc/lc-limit-timeline', { months_ahead: 3 }, mergeLCTimeline);
     // CRUD: "all"이면 company_id 파라미터 생략 → 전체 반환
+    const fetchSales = () => fetchWithAuth<SaleListItem[]>(companyQueryUrl('/api/v1/sales', companyId));
     const fetchBLs = () => fetchWithAuth<BLShipment[]>(companyQueryUrl('/api/v1/bls', companyId));
     const fetchOrders = () => fetchWithAuth<Order[]>(companyQueryUrl('/api/v1/orders', companyId));
 
     const results = await Promise.allSettled([
       fetchInventory(),       // 0
-      fetchMargin(),          // 1
+      fetchSales(),           // 1
       fetchCustomerAnalysis(),// 2
       fetchPriceTrendApi(),   // 3
       fetchLCTimeline(),      // 4
@@ -227,10 +216,10 @@ export function useDashboard(companyId: string | null, userRole: string) {
       setSummary((s) => ({ ...s, loading: false, error: '재고 데이터 조회 실패' }));
     }
 
-    // 1: Margin -> revenue
-    const marginResult = results[1];
-    if (marginResult.status === 'fulfilled') {
-      setRevenue({ data: { months: marginResult.value.months || [] }, loading: false, error: null });
+    // 1: Sales -> monthly revenue
+    const salesResult = results[1];
+    if (salesResult.status === 'fulfilled') {
+      setRevenue({ data: salesToMonthlyRevenue(salesResult.value), loading: false, error: null });
     } else {
       setRevenue({ data: null, loading: false, error: '매출 데이터 조회 실패' });
     }

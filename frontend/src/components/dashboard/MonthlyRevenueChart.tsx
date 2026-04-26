@@ -12,11 +12,12 @@ interface Props {
 
 export default function MonthlyRevenueChart({ data }: Props) {
   const months = data.months || [];
+  const hasMargin = months.some((m) => (m.margin_krw ?? 0) !== 0);
 
   return (
     <Card>
       <CardHeader className="py-3 px-4">
-        <CardTitle className="text-sm">월별 매출/마진</CardTitle>
+        <CardTitle className="text-sm">{hasMargin ? '월별 매출/마진' : '월별 매출'}</CardTitle>
       </CardHeader>
       <CardContent className="px-4 pb-3">
         {months.length === 0 ? (
@@ -48,16 +49,18 @@ export default function MonthlyRevenueChart({ data }: Props) {
               />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar yAxisId="left" dataKey="revenue_krw" fill="#3b82f6" name="매출" />
-              <Bar yAxisId="left" dataKey="margin_krw" fill="#22c55e" name="마진" />
-              <Line
-                yAxisId="right"
-                type="monotone"
-                dataKey="margin_rate"
-                stroke="#ef4444"
-                strokeDasharray="5 5"
-                dot={{ r: 3 }}
-                name="마진율"
-              />
+              {hasMargin && <Bar yAxisId="left" dataKey="margin_krw" fill="#22c55e" name="마진" />}
+              {hasMargin && (
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="margin_rate"
+                  stroke="#ef4444"
+                  strokeDasharray="5 5"
+                  dot={{ r: 3 }}
+                  name="마진율"
+                />
+              )}
             </ComposedChart>
           </ResponsiveContainer>
         )}

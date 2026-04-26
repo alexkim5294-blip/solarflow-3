@@ -106,16 +106,23 @@ export default function TopNav() {
 
   const isMasters = pathname.startsWith('/masters');
   const isTools   = ['/memo', '/approval', '/settings'].some(p => pathname.startsWith(p));
+  const navTriggerClass = (active: boolean) => cn(
+    'flex h-8 items-center gap-1.5 rounded-md border border-transparent px-2.5 text-sm font-medium transition-all outline-none select-none whitespace-nowrap',
+    'focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/45',
+    active
+      ? 'border-border bg-muted text-foreground shadow-sm'
+      : 'text-muted-foreground hover:border-border hover:bg-muted/70 hover:text-foreground',
+  );
 
   return (
-    <header className="h-14 border-b bg-card flex items-center gap-2 px-4 shrink-0 z-40">
+    <header className="h-14 shrink-0 border-b bg-background/95 flex items-center gap-2 px-4 z-40 shadow-[0_1px_0_rgba(0,0,0,0.02)] backdrop-blur supports-[backdrop-filter]:bg-background/85">
 
       {/* ① 로고 — 가용재고 홈으로 이동 */}
-      <Link to="/inventory" className="flex items-center gap-1.5 shrink-0 mr-1">
-        <div className="h-6 w-6 rounded bg-primary flex items-center justify-center">
-          <span className="text-[10px] font-bold text-primary-foreground leading-none">SF</span>
+      <Link to="/inventory" className="flex h-9 shrink-0 items-center gap-2 rounded-md pr-1.5 mr-1 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/45">
+        <div className="flex size-7 items-center justify-center rounded-md border border-foreground/10 bg-foreground text-background shadow-sm">
+          <span className="text-[10px] font-semibold leading-none tracking-tight">SF</span>
         </div>
-        <span className="text-sm font-bold hidden sm:block">SolarFlow</span>
+        <span className="hidden text-sm font-semibold tracking-tight sm:block">SolarFlow</span>
       </Link>
 
       {/* ② 법인 선택 */}
@@ -138,10 +145,7 @@ export default function TopNav() {
       <nav className="flex items-center gap-0.5">
         {showInventory && inventoryVisible.length > 0 && (
           <DropdownMenu>
-            <DropdownMenuTrigger className={cn(
-              'flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors select-none whitespace-nowrap',
-              isInventory ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
-            )}>
+            <DropdownMenuTrigger className={navTriggerClass(isInventory)}>
               <Package className="h-3.5 w-3.5" />가용재고
               <ChevronDown className="h-3 w-3 opacity-60" />
             </DropdownMenuTrigger>
@@ -157,10 +161,7 @@ export default function TopNav() {
         )}
         {showPurchase && purchaseVisible.length > 0 && (
           <DropdownMenu>
-            <DropdownMenuTrigger className={cn(
-              'flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors select-none whitespace-nowrap',
-              isPurchase ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
-            )}>
+            <DropdownMenuTrigger className={navTriggerClass(isPurchase)}>
               <ClipboardList className="h-3.5 w-3.5" />구매
               <ChevronDown className="h-3 w-3 opacity-60" />
             </DropdownMenuTrigger>
@@ -176,10 +177,7 @@ export default function TopNav() {
         )}
         {showSales && salesVisible.length > 0 && (
           <DropdownMenu>
-            <DropdownMenuTrigger className={cn(
-              'flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors select-none whitespace-nowrap',
-              isSales ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
-            )}>
+            <DropdownMenuTrigger className={navTriggerClass(isSales)}>
               <Store className="h-3.5 w-3.5" />판매
               <ChevronDown className="h-3 w-3 opacity-60" />
             </DropdownMenuTrigger>
@@ -197,10 +195,7 @@ export default function TopNav() {
         {/* 현황/분석 드롭다운 */}
         {analysisVisible.length > 0 && (
           <DropdownMenu>
-            <DropdownMenuTrigger className={cn(
-              'flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors select-none whitespace-nowrap',
-              isAnalysis ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
-            )}>
+            <DropdownMenuTrigger className={navTriggerClass(isAnalysis)}>
               <BarChart3 className="h-3.5 w-3.5" />현황/분석
               <ChevronDown className="h-3 w-3 opacity-60" />
             </DropdownMenuTrigger>
@@ -218,10 +213,7 @@ export default function TopNav() {
         {/* 도구 드롭다운: 마스터 관리 서브페이지 + 메모/결재안/설정 */}
         {(showMasters || toolsVisible.length > 0) && (
           <DropdownMenu>
-            <DropdownMenuTrigger className={cn(
-              'flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors select-none whitespace-nowrap',
-              (isMasters || isTools) ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
-            )}>
+            <DropdownMenuTrigger className={navTriggerClass(isMasters || isTools)}>
               도구
               <ChevronDown className="h-3 w-3 opacity-60" />
             </DropdownMenuTrigger>
@@ -253,7 +245,7 @@ export default function TopNav() {
 
       {/* 사용자 드롭다운 */}
       <DropdownMenu>
-        <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md px-2.5 h-8 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors">
+        <DropdownMenuTrigger className="flex h-8 items-center gap-1.5 rounded-md border border-transparent px-2.5 text-xs font-medium text-muted-foreground transition-all hover:border-border hover:bg-muted/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/45">
           <User className="h-3.5 w-3.5 shrink-0" />
           <span className="hidden md:block max-w-[80px] truncate">
             {user?.name || user?.email || '—'}

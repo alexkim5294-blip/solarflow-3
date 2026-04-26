@@ -186,10 +186,10 @@ export function PartnerCombobox({
         aria-expanded={open}
         aria-invalid={error}
         className={cn(
-          'flex w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent h-8 py-2 pr-2 pl-2.5 text-sm transition-colors outline-none select-none',
-          'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
+          'flex w-full items-center justify-between gap-1.5 rounded-md border border-input bg-background h-8 py-2 pr-2 pl-2.5 text-sm shadow-sm transition-colors outline-none select-none hover:border-foreground/20',
+          'focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/45',
           'dark:bg-input/30 dark:hover:bg-input/50',
-          error && 'border-destructive ring-3 ring-destructive/20 dark:border-destructive/50 dark:ring-destructive/40',
+          error && 'border-destructive ring-2 ring-destructive/20 dark:border-destructive/50 dark:ring-destructive/40',
           !selected && 'text-muted-foreground',
         )}
       >
@@ -199,7 +199,7 @@ export function PartnerCombobox({
 
       {open && (
         <div
-          className="absolute z-50 top-full mt-1 w-full min-w-[12rem] rounded-lg border border-border bg-popover text-popover-foreground shadow-md overflow-hidden"
+          className="absolute z-50 top-full mt-1 w-full min-w-[12rem] overflow-hidden rounded-md border border-border/70 bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/5"
           onKeyDown={handleKeyDown}
         >
           <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-border">

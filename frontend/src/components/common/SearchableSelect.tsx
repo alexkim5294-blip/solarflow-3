@@ -130,9 +130,9 @@ export default function SearchableSelect({
         aria-expanded={open}
         aria-invalid={error}
         className={cn(
-          'flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none transition-colors',
-          'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50',
-          error && 'border-destructive ring-3 ring-destructive/20',
+          'flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none transition-colors hover:border-foreground/20',
+          'focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/45 disabled:cursor-not-allowed disabled:opacity-50',
+          error && 'border-destructive ring-2 ring-destructive/20',
           !selected && 'text-muted-foreground',
         )}
       >
@@ -142,7 +142,7 @@ export default function SearchableSelect({
 
       {open && (
         <div
-          className="absolute z-50 mt-1 w-full min-w-[16rem] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-md"
+          className="absolute z-50 mt-1 w-full min-w-[16rem] overflow-hidden rounded-md border border-border/70 bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/5"
           onKeyDown={handleListKeyDown}
         >
           <div className="flex items-center gap-2 border-b border-border px-2.5 py-1.5">

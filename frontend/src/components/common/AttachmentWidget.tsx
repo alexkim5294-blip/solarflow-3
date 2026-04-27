@@ -10,16 +10,6 @@ interface AttachmentAccess {
   expires_at: number;
 }
 
-type SaveFilePicker = (options?: {
-  suggestedName?: string;
-  types?: Array<{ description: string; accept: Record<string, string[]> }>;
-}) => Promise<{
-  createWritable: () => Promise<{
-    write: (data: Blob) => Promise<void>;
-    close: () => Promise<void>;
-  }>;
-}>;
-
 interface Props {
   entityType: string;
   entityId: string;
@@ -165,6 +155,7 @@ export default function AttachmentWidget({
   };
 
   const previewFile = async (file: DocumentFile) => {
+    setError('');
     try {
       setPreview({ url: await prepareFileUrl(file), file });
     } catch (err) {
@@ -176,29 +167,15 @@ export default function AttachmentWidget({
     setDownloadingId(file.file_id);
     setError('');
     try {
-      const saveFilePicker = (window as Window & { showSaveFilePicker?: SaveFilePicker }).showSaveFilePicker;
-      if (saveFilePicker) {
-        const handle = await saveFilePicker({
-          suggestedName: file.original_name || 'attachment.pdf',
-          types: [{ description: 'PDF 문서', accept: { 'application/pdf': ['.pdf'] } }],
-        });
-        const href = currentHref || toBrowserUrl(await accessUrl(file, 'attachment'));
-        const response = await fetch(href, { cache: 'no-store', credentials: 'include' });
-        if (!response.ok) {
-          throw new Error('파일 사본을 다운로드할 수 없습니다');
-        }
-        const writable = await handle.createWritable();
-        await writable.write(await response.blob());
-        await writable.close();
-        return;
-      }
-
       const href = currentHref || toBrowserUrl(await accessUrl(file, 'attachment'));
-      window.location.href = href;
+      const link = document.createElement('a');
+      link.href = href;
+      link.download = file.original_name || 'attachment.pdf';
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        return;
-      }
       setError(err instanceof Error ? err.message : '파일 사본을 다운로드할 수 없습니다');
     } finally {
       setDownloadingId(null);

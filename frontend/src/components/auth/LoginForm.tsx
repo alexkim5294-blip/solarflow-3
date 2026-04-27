@@ -39,7 +39,7 @@ export default function LoginForm() {
             <Input
               id="email"
               type="email"
-              placeholder="admin@solarflow.app"
+              placeholder="user@topsolar.kr"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required

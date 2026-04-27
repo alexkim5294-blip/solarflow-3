@@ -1,10 +1,17 @@
 // 설정 페이지 — 사용자 관리 (admin 전용)
 import { useEffect, useState } from 'react';
+import { KeyRound, Plus } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/api';
 import { usePermission } from '@/hooks/usePermission';
 import { ROLE_LABELS, type Role } from '@/config/permissions';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 interface UserProfile {
   user_id: string;
@@ -17,6 +24,14 @@ interface UserProfile {
 }
 
 const ROLE_OPTIONS: Role[] = ['admin', 'operator', 'executive', 'manager', 'viewer'];
+
+interface CreateUserForm {
+  email: string;
+  name: string;
+  password: string;
+  role: Role;
+  department: string;
+}
 
 const ROLE_BADGE_VARIANT: Record<Role, string> = {
   admin:     'bg-red-100 text-red-700',
@@ -35,6 +50,21 @@ export default function SettingsPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState<CreateUserForm>({
+    email: '',
+    name: '',
+    password: '',
+    role: 'viewer',
+    department: '',
+  });
+  const [createError, setCreateError] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [resetTarget, setResetTarget] = useState<UserProfile | null>(null);
+  const [tempPassword, setTempPassword] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [resetSuccess, setResetSuccess] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
 
   useEffect(() => {
     if (!manageUsers) return;
@@ -71,6 +101,88 @@ export default function SettingsPage() {
       alert('상태 변경에 실패했습니다');
     } finally {
       setSavingId(null);
+    }
+  }
+
+  function closeCreateDialog() {
+    setCreateOpen(false);
+    setCreateForm({ email: '', name: '', password: '', role: 'viewer', department: '' });
+    setCreateError('');
+    setIsCreating(false);
+  }
+
+  async function handleCreateUser(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setCreateError('');
+
+    if (createForm.password.length < 8) {
+      setCreateError('임시 비밀번호는 8자 이상으로 입력해 주세요.');
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const created = await fetchWithAuth<UserProfile>('/api/v1/users', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: createForm.email.trim(),
+          name: createForm.name.trim(),
+          password: createForm.password,
+          role: createForm.role,
+          department: createForm.department.trim() || null,
+          is_active: true,
+        }),
+      });
+      setUsers((prev) => [...prev, created].sort((a, b) => a.email.localeCompare(b.email)));
+      closeCreateDialog();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '사용자 생성에 실패했습니다';
+      setCreateError(message);
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
+  function openResetDialog(user: UserProfile) {
+    setResetTarget(user);
+    setTempPassword('');
+    setResetError('');
+    setResetSuccess('');
+    setIsResetting(false);
+  }
+
+  function closeResetDialog() {
+    setResetTarget(null);
+    setTempPassword('');
+    setResetError('');
+    setResetSuccess('');
+    setIsResetting(false);
+  }
+
+  async function handleResetPassword(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!resetTarget) return;
+    setResetError('');
+    setResetSuccess('');
+
+    if (tempPassword.length < 8) {
+      setResetError('임시 비밀번호는 8자 이상으로 입력해 주세요.');
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      await fetchWithAuth(`/api/v1/users/${resetTarget.user_id}/password`, {
+        method: 'PUT',
+        body: JSON.stringify({ password: tempPassword }),
+      });
+      setResetSuccess('임시 비밀번호로 재설정했습니다.');
+      setTempPassword('');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '비밀번호 재설정에 실패했습니다';
+      setResetError(message);
+    } finally {
+      setIsResetting(false);
     }
   }
 
@@ -118,8 +230,12 @@ export default function SettingsPage() {
 
       {/* 사용자 목록 */}
       <div className="rounded-lg border bg-card overflow-hidden">
-        <div className="px-4 py-3 border-b bg-muted/30">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b bg-muted/30">
           <p className="text-sm font-medium">사용자 목록 ({users.length}명)</p>
+          <Button size="sm" className="gap-1.5" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            사용자 추가
+          </Button>
         </div>
         {loading ? (
           <div className="p-8 text-center text-sm text-muted-foreground">불러오는 중...</div>
@@ -169,12 +285,142 @@ export default function SettingsPage() {
                     />
                     <span className="text-xs text-muted-foreground w-8">{u.is_active ? '활성' : '비활성'}</span>
                   </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 gap-1.5"
+                    onClick={() => openResetDialog(u)}
+                    disabled={isSaving}
+                  >
+                    <KeyRound className="h-3.5 w-3.5" />
+                    임시 비번
+                  </Button>
                 </div>
               );
             })}
           </div>
         )}
       </div>
+
+      <Dialog open={createOpen} onOpenChange={(open) => { if (!open) closeCreateDialog(); else setCreateOpen(true); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>사용자 추가</DialogTitle>
+            <DialogDescription>
+              Supabase 인증 계정과 SolarFlow 권한을 함께 생성합니다.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreateUser} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-user-email">이메일</Label>
+              <Input
+                id="new-user-email"
+                type="email"
+                value={createForm.email}
+                onChange={(e) => setCreateForm((prev) => ({ ...prev, email: e.target.value }))}
+                placeholder="user@topsolar.kr"
+                autoComplete="email"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-user-name">이름</Label>
+              <Input
+                id="new-user-name"
+                value={createForm.name}
+                onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="홍길동"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-user-password">임시 비밀번호</Label>
+              <Input
+                id="new-user-password"
+                type="password"
+                value={createForm.password}
+                onChange={(e) => setCreateForm((prev) => ({ ...prev, password: e.target.value }))}
+                autoComplete="new-password"
+                minLength={8}
+                required
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>역할</Label>
+                <Select
+                  value={createForm.role}
+                  onValueChange={(v) => setCreateForm((prev) => ({ ...prev, role: v as Role }))}
+                >
+                  <SelectTrigger>
+                    <Txt text={ROLE_LABELS[createForm.role] ?? createForm.role} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ROLE_OPTIONS.map((r) => (
+                      <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-user-department">부서</Label>
+                <Input
+                  id="new-user-department"
+                  value={createForm.department}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, department: e.target.value }))}
+                  placeholder="선택"
+                />
+              </div>
+            </div>
+            {createError && <p className="text-sm text-destructive">{createError}</p>}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeCreateDialog} disabled={isCreating}>
+                취소
+              </Button>
+              <Button type="submit" disabled={isCreating}>
+                {isCreating ? '생성 중...' : '생성'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!resetTarget} onOpenChange={(open) => { if (!open) closeResetDialog(); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>임시 비밀번호 재설정</DialogTitle>
+            <DialogDescription>
+              {resetTarget?.email} 계정의 비밀번호를 새 임시 비밀번호로 바꿉니다.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleResetPassword} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="reset-temp-password">새 임시 비밀번호</Label>
+              <Input
+                id="reset-temp-password"
+                type="password"
+                value={tempPassword}
+                onChange={(e) => setTempPassword(e.target.value)}
+                autoComplete="new-password"
+                minLength={8}
+                required
+              />
+            </div>
+            {resetError && <p className="text-sm text-destructive">{resetError}</p>}
+            {resetSuccess && <p className="text-sm text-emerald-700">{resetSuccess}</p>}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeResetDialog} disabled={isResetting}>
+                닫기
+              </Button>
+              <Button type="submit" disabled={isResetting || !!resetSuccess}>
+                {isResetting ? '재설정 중...' : '재설정'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

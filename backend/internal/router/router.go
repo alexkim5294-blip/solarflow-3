@@ -104,6 +104,7 @@ func New(db *supa.Client, engineClient ...*engine.EngineClient) http.Handler {
 		r.Route("/lcs", func(r chi.Router) {
 			r.Get("/", lcH.List)
 			r.Post("/", lcH.Create)
+			r.Get("/{id}/lines", lcH.ListLines)
 			r.Get("/{id}", lcH.GetByID)
 			r.Put("/{id}", lcH.Update)
 			r.Delete("/{id}", lcH.Delete)
@@ -280,8 +281,10 @@ func New(db *supa.Client, engineClient ...*engine.EngineClient) http.Handler {
 		r.Get("/users/me", userH.GetMe)
 		// 사용자 관리 (admin 전용)
 		r.Get("/users", userH.ListUsers)
+		r.Post("/users", userH.CreateUser)
 		r.Put("/users/{id}/role", userH.UpdateRole)
 		r.Put("/users/{id}/active", userH.UpdateActive)
+		r.Put("/users/{id}/password", userH.ResetPassword)
 	})
 
 	// 비유: Rust 계산실 프록시 — 프론트→Go→Rust 중계

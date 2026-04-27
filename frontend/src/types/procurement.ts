@@ -33,6 +33,7 @@ export interface POLineItem {
   spec_wp?: number;
   quantity: number;
   unit_price_usd?: number;
+  unit_price_usd_wp?: number;
   total_amount_usd?: number;
   item_type?: 'main' | 'spare';
   payment_type?: 'paid' | 'free';
@@ -62,6 +63,30 @@ export interface LCRecord {
   repaid?: boolean;
   status: LCStatus;
   memo?: string;
+}
+
+export interface LCLineItem {
+  lc_line_id: string;
+  lc_id: string;
+  po_line_id?: string;
+  product_id: string;
+  product_name?: string;
+  product_code?: string;
+  spec_wp?: number;
+  quantity: number;
+  capacity_kw: number;
+  amount_usd?: number;
+  unit_price_usd_wp?: number;
+  item_type: 'main' | 'spare';
+  payment_type: 'paid' | 'free';
+  memo?: string;
+  products?: {
+    product_code?: string;
+    product_name?: string;
+    spec_wp?: number;
+    module_width_mm?: number;
+    module_height_mm?: number;
+  };
 }
 
 export interface TTRemittance {

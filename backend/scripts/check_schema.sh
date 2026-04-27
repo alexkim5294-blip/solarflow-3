@@ -30,6 +30,7 @@ check_struct() {
   local table="$1"
   local file="$2"
   local struct_pattern="$3"   # awk 매칭용 struct 이름 (정규식 가능)
+  local ignore_regex="${4:-}"
 
   local db_cols
   db_cols=$(psql -d "$DB" -Atc \
@@ -43,6 +44,9 @@ check_struct() {
   local missing=()
   while IFS= read -r col; do
     [[ -z "$col" ]] && continue
+    if [[ -n "$ignore_regex" && "$col" =~ $ignore_regex ]]; then
+      continue
+    fi
     if ! echo "$db_cols" | grep -qx "$col"; then
       missing+=("$col")
     fi
@@ -70,8 +74,8 @@ check_struct "purchase_orders" "$MODELS_DIR/po.go" "CreatePurchaseOrderRequest"
 check_struct "purchase_orders" "$MODELS_DIR/po.go" "UpdatePurchaseOrderRequest"
 
 # lc_records
-check_struct "lc_records" "$MODELS_DIR/lc.go" "CreateLCRequest"
-check_struct "lc_records" "$MODELS_DIR/lc.go" "UpdateLCRequest"
+check_struct "lc_records" "$MODELS_DIR/lc.go" "CreateLCRequest" "^(line_items)$"
+check_struct "lc_records" "$MODELS_DIR/lc.go" "UpdateLCRequest" "^(line_items)$"
 
 # tt_remittances
 check_struct "tt_remittances" "$MODELS_DIR/tt.go" "CreateTTRequest"

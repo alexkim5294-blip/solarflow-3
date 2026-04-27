@@ -28,9 +28,9 @@ type LCRecord struct {
 // 비유: LC 서류에 은행 명함, 법인 도장, PO번호가 함께 붙어 있는 것
 type LCWithRelations struct {
 	LCRecord
-	Banks          *LCBankSummary    `json:"banks"`
-	Companies      *CompanySummary   `json:"companies"`
-	PurchaseOrders *LCPOSummary      `json:"purchase_orders"`
+	Banks          *LCBankSummary  `json:"banks"`
+	Companies      *CompanySummary `json:"companies"`
+	PurchaseOrders *LCPOSummary    `json:"purchase_orders"`
 }
 
 // LCBankSummary — LC 목록 조회 시 은행 요약 정보
@@ -48,9 +48,9 @@ type LCPOSummary struct {
 // 비유: LC 서류를 펼쳐서 은행 한도, 수수료율까지 모두 보여주는 것
 type LCDetail struct {
 	LCRecord
-	Banks          *LCBankDetail     `json:"banks"`
-	Companies      *CompanySummary   `json:"companies"`
-	PurchaseOrders *LCPOSummary      `json:"purchase_orders"`
+	Banks          *LCBankDetail   `json:"banks"`
+	Companies      *CompanySummary `json:"companies"`
+	PurchaseOrders *LCPOSummary    `json:"purchase_orders"`
 }
 
 // LCBankDetail — LC 상세 조회 시 은행 상세 정보 (수수료율 포함)
@@ -78,22 +78,23 @@ var validUsanceTypes = map[string]bool{
 // CreateLCRequest — LC 등록 시 클라이언트가 보내는 데이터
 // 비유: "LC 개설 신청서" — PO, 은행, 법인, 개설금액을 필수 기재
 type CreateLCRequest struct {
-	POID           string   `json:"po_id"`
-	LCNumber       *string  `json:"lc_number"`
-	BankID         string   `json:"bank_id"`
-	CompanyID      string   `json:"company_id"`
-	OpenDate       *string  `json:"open_date"`
-	AmountUSD      float64  `json:"amount_usd"`
-	TargetQty      *int     `json:"target_qty"`
-	TargetMW       *float64 `json:"target_mw"`
-	UsanceDays     *int     `json:"usance_days"`
-	UsanceType     *string  `json:"usance_type"`
-	MaturityDate   *string  `json:"maturity_date"`
-	SettlementDate *string  `json:"settlement_date"`
-	RepaymentDate  *string  `json:"repayment_date"`
-	Repaid         bool     `json:"repaid"`
-	Status         string   `json:"status"`
-	Memo           *string  `json:"memo"`
+	POID           string                `json:"po_id"`
+	LCNumber       *string               `json:"lc_number"`
+	BankID         string                `json:"bank_id"`
+	CompanyID      string                `json:"company_id"`
+	OpenDate       *string               `json:"open_date"`
+	AmountUSD      float64               `json:"amount_usd"`
+	TargetQty      *int                  `json:"target_qty"`
+	TargetMW       *float64              `json:"target_mw"`
+	UsanceDays     *int                  `json:"usance_days"`
+	UsanceType     *string               `json:"usance_type"`
+	MaturityDate   *string               `json:"maturity_date"`
+	SettlementDate *string               `json:"settlement_date"`
+	RepaymentDate  *string               `json:"repayment_date"`
+	Repaid         bool                  `json:"repaid"`
+	Status         string                `json:"status"`
+	Memo           *string               `json:"memo"`
+	LineItems      []CreateLCLineRequest `json:"line_items,omitempty"`
 }
 
 // Validate — LC 등록 요청의 입력값을 검증
@@ -129,18 +130,23 @@ func (req *CreateLCRequest) Validate() string {
 	if req.LCNumber != nil && utf8.RuneCountInString(*req.LCNumber) > 30 {
 		return "lc_number는 30자를 초과할 수 없습니다"
 	}
+	for i := range req.LineItems {
+		if msg := req.LineItems[i].Validate(); msg != "" {
+			return msg
+		}
+	}
 	return ""
 }
 
-// UpdateLCRequest — LC 수정 시 클라이언트가 보내는 데이터
-// 비유: "LC 정보 변경 신청서" — 바꾸고 싶은 항목만 적어서 제출
-type UpdateLCRequest struct {
+// LCRecordInsert — lc_records INSERT payload
+// 비유: LC 신청서에서 품목 명세표를 떼고 본문만 DB 서류함에 넣는 양식
+type LCRecordInsert struct {
+	POID           string   `json:"po_id"`
 	LCNumber       *string  `json:"lc_number,omitempty"`
-	POID           *string  `json:"po_id,omitempty"`
-	BankID         *string  `json:"bank_id,omitempty"`
-	CompanyID      *string  `json:"company_id,omitempty"`
+	BankID         string   `json:"bank_id"`
+	CompanyID      string   `json:"company_id"`
 	OpenDate       *string  `json:"open_date,omitempty"`
-	AmountUSD      *float64 `json:"amount_usd,omitempty"`
+	AmountUSD      float64  `json:"amount_usd"`
 	TargetQty      *int     `json:"target_qty,omitempty"`
 	TargetMW       *float64 `json:"target_mw,omitempty"`
 	UsanceDays     *int     `json:"usance_days,omitempty"`
@@ -148,9 +154,52 @@ type UpdateLCRequest struct {
 	MaturityDate   *string  `json:"maturity_date,omitempty"`
 	SettlementDate *string  `json:"settlement_date,omitempty"`
 	RepaymentDate  *string  `json:"repayment_date,omitempty"`
-	Repaid         *bool    `json:"repaid,omitempty"`
-	Status         *string  `json:"status,omitempty"`
+	Repaid         bool     `json:"repaid"`
+	Status         string   `json:"status"`
 	Memo           *string  `json:"memo,omitempty"`
+}
+
+func NewLCRecordInsert(req CreateLCRequest) LCRecordInsert {
+	return LCRecordInsert{
+		POID:           req.POID,
+		LCNumber:       req.LCNumber,
+		BankID:         req.BankID,
+		CompanyID:      req.CompanyID,
+		OpenDate:       req.OpenDate,
+		AmountUSD:      req.AmountUSD,
+		TargetQty:      req.TargetQty,
+		TargetMW:       req.TargetMW,
+		UsanceDays:     req.UsanceDays,
+		UsanceType:     req.UsanceType,
+		MaturityDate:   req.MaturityDate,
+		SettlementDate: req.SettlementDate,
+		RepaymentDate:  req.RepaymentDate,
+		Repaid:         req.Repaid,
+		Status:         req.Status,
+		Memo:           req.Memo,
+	}
+}
+
+// UpdateLCRequest — LC 수정 시 클라이언트가 보내는 데이터
+// 비유: "LC 정보 변경 신청서" — 바꾸고 싶은 항목만 적어서 제출
+type UpdateLCRequest struct {
+	LCNumber       *string               `json:"lc_number,omitempty"`
+	POID           *string               `json:"po_id,omitempty"`
+	BankID         *string               `json:"bank_id,omitempty"`
+	CompanyID      *string               `json:"company_id,omitempty"`
+	OpenDate       *string               `json:"open_date,omitempty"`
+	AmountUSD      *float64              `json:"amount_usd,omitempty"`
+	TargetQty      *int                  `json:"target_qty,omitempty"`
+	TargetMW       *float64              `json:"target_mw,omitempty"`
+	UsanceDays     *int                  `json:"usance_days,omitempty"`
+	UsanceType     *string               `json:"usance_type,omitempty"`
+	MaturityDate   *string               `json:"maturity_date,omitempty"`
+	SettlementDate *string               `json:"settlement_date,omitempty"`
+	RepaymentDate  *string               `json:"repayment_date,omitempty"`
+	Repaid         *bool                 `json:"repaid,omitempty"`
+	Status         *string               `json:"status,omitempty"`
+	Memo           *string               `json:"memo,omitempty"`
+	LineItems      []CreateLCLineRequest `json:"line_items,omitempty"`
 }
 
 // Validate — LC 수정 요청의 입력값을 검증
@@ -180,5 +229,52 @@ func (req *UpdateLCRequest) Validate() string {
 	if req.LCNumber != nil && utf8.RuneCountInString(*req.LCNumber) > 30 {
 		return "lc_number는 30자를 초과할 수 없습니다"
 	}
+	for i := range req.LineItems {
+		if msg := req.LineItems[i].Validate(); msg != "" {
+			return msg
+		}
+	}
 	return ""
+}
+
+// LCRecordUpdate — lc_records UPDATE payload
+// 비유: 변경 신청서에서 품목 명세표를 제외한 LC 본문 수정 양식
+type LCRecordUpdate struct {
+	LCNumber       *string  `json:"lc_number,omitempty"`
+	POID           *string  `json:"po_id,omitempty"`
+	BankID         *string  `json:"bank_id,omitempty"`
+	CompanyID      *string  `json:"company_id,omitempty"`
+	OpenDate       *string  `json:"open_date,omitempty"`
+	AmountUSD      *float64 `json:"amount_usd,omitempty"`
+	TargetQty      *int     `json:"target_qty,omitempty"`
+	TargetMW       *float64 `json:"target_mw,omitempty"`
+	UsanceDays     *int     `json:"usance_days,omitempty"`
+	UsanceType     *string  `json:"usance_type,omitempty"`
+	MaturityDate   *string  `json:"maturity_date,omitempty"`
+	SettlementDate *string  `json:"settlement_date,omitempty"`
+	RepaymentDate  *string  `json:"repayment_date,omitempty"`
+	Repaid         *bool    `json:"repaid,omitempty"`
+	Status         *string  `json:"status,omitempty"`
+	Memo           *string  `json:"memo,omitempty"`
+}
+
+func NewLCRecordUpdate(req UpdateLCRequest) LCRecordUpdate {
+	return LCRecordUpdate{
+		LCNumber:       req.LCNumber,
+		POID:           req.POID,
+		BankID:         req.BankID,
+		CompanyID:      req.CompanyID,
+		OpenDate:       req.OpenDate,
+		AmountUSD:      req.AmountUSD,
+		TargetQty:      req.TargetQty,
+		TargetMW:       req.TargetMW,
+		UsanceDays:     req.UsanceDays,
+		UsanceType:     req.UsanceType,
+		MaturityDate:   req.MaturityDate,
+		SettlementDate: req.SettlementDate,
+		RepaymentDate:  req.RepaymentDate,
+		Repaid:         req.Repaid,
+		Status:         req.Status,
+		Memo:           req.Memo,
+	}
 }

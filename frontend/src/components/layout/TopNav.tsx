@@ -4,7 +4,7 @@ import {
   StickyNote, FileSignature, Settings, LogOut, User, FileText, History, Ship,
   Building2, Factory, Tag, Handshake, Warehouse, Banknote, HardHat,
   Package, ClipboardList, Store, Shield, Truck, TrendingUp,
-  ScrollText, Receipt, Wallet, GitMerge,
+  ScrollText, Receipt, Wallet, GitMerge, KeyRound,
 } from 'lucide-react';
 import QuickRegister from '@/components/layout/QuickRegister';
 import { cn } from '@/lib/utils';
@@ -19,9 +19,16 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { canAccessMenu, type MenuKey } from '@/config/permissions';
 import type { Role } from '@/config/permissions';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 
 const analysisSections: { label: string; path: string; icon: React.ElementType; menu: MenuKey }[] = [
   { label: '대시보드',       path: '/dashboard', icon: LayoutDashboard, menu: 'dashboard' },
@@ -78,6 +85,13 @@ export default function TopNav() {
   const { user, logout, role } = useAuth();
   const { roleLabel } = usePermission();
   const r = role as Role | null;
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const companies = useAppStore((s) => s.companies);
   const loadCompanies = useAppStore((s) => s.loadCompanies);
   const { selectedCompanyId, setCompanyId } = useAppStore();
@@ -114,7 +128,83 @@ export default function TopNav() {
       : 'text-muted-foreground hover:border-border hover:bg-muted/70 hover:text-foreground',
   );
 
+  const resetPasswordForm = () => {
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordError('');
+    setPasswordSuccess('');
+    setIsChangingPassword(false);
+  };
+
+  const handlePasswordOpenChange = (open: boolean) => {
+    setPasswordOpen(open);
+    if (!open) resetPasswordForm();
+  };
+
+  const handlePasswordSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    const email = user?.email?.trim();
+    if (!email) {
+      setPasswordError('로그인 사용자 이메일을 확인할 수 없습니다.');
+      return;
+    }
+    if (!currentPassword) {
+      setPasswordError('현재 비밀번호를 입력해 주세요.');
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPasswordError('새 비밀번호는 8자 이상으로 입력해 주세요.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('새 비밀번호 확인이 일치하지 않습니다.');
+      return;
+    }
+    if (currentPassword === newPassword) {
+      setPasswordError('새 비밀번호는 현재 비밀번호와 다르게 입력해 주세요.');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password: currentPassword,
+      });
+      if (signInError) {
+        throw new Error('현재 비밀번호가 맞지 않습니다.');
+      }
+
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      if (updateError) {
+        throw new Error(updateError.message || '비밀번호 변경에 실패했습니다.');
+      }
+
+      setPasswordSuccess('비밀번호가 변경되었습니다. 다시 로그인해 주세요.');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      window.setTimeout(async () => {
+        handlePasswordOpenChange(false);
+        await logout();
+        navigate('/login');
+      }, 1200);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '비밀번호 변경에 실패했습니다.';
+      setPasswordError(message);
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
   return (
+    <>
     <header className="h-14 shrink-0 border-b bg-background/95 flex items-center gap-2 px-4 z-40 shadow-[0_1px_8px_rgba(15,23,42,0.04)] backdrop-blur supports-[backdrop-filter]:bg-background/90">
 
       {/* ① 로고 — 가용재고 홈으로 이동 */}
@@ -261,6 +351,13 @@ export default function TopNav() {
           <DropdownMenuLabel className="text-xs font-normal text-muted-foreground py-1">
             {user?.email}
           </DropdownMenuLabel>
+          <DropdownMenuItem
+            onClick={() => setPasswordOpen(true)}
+            className="gap-2"
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            비밀번호 변경
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={async () => { await logout(); navigate('/login'); }}
@@ -272,5 +369,72 @@ export default function TopNav() {
         </DropdownMenuContent>
       </DropdownMenu>
     </header>
+    <Dialog open={passwordOpen} onOpenChange={handlePasswordOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>비밀번호 변경</DialogTitle>
+          <DialogDescription>
+            임시 비밀번호로 로그인한 뒤 새 비밀번호로 바꿉니다.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handlePasswordSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="topnav-current-password">현재 비밀번호</Label>
+            <Input
+              id="topnav-current-password"
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="topnav-new-password">새 비밀번호</Label>
+            <Input
+              id="topnav-new-password"
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              autoComplete="new-password"
+              minLength={8}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="topnav-confirm-password">새 비밀번호 확인</Label>
+            <Input
+              id="topnav-confirm-password"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
+              minLength={8}
+              required
+            />
+          </div>
+          {passwordError && (
+            <p className="text-sm text-destructive">{passwordError}</p>
+          )}
+          {passwordSuccess && (
+            <p className="text-sm text-emerald-700">{passwordSuccess}</p>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handlePasswordOpenChange(false)}
+              disabled={isChangingPassword}
+            >
+              취소
+            </Button>
+            <Button type="submit" disabled={isChangingPassword}>
+              {isChangingPassword ? '변경 중...' : '변경'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/u
 import { useAppStore } from '@/stores/appStore';
 import { fetchWithAuth } from '@/lib/api';
 import { formatUSD, shortMfgName, poMfgSpecLabel, poLineSummary } from '@/lib/utils';
-import type { LCRecord, PurchaseOrder, POLineItem, TTRemittance } from '@/types/procurement';
+import type { LCLineItem, LCRecord, PurchaseOrder, POLineItem, TTRemittance } from '@/types/procurement';
 import type { Bank, Company, Product } from '@/types/masters';
 
 function Txt({ text, placeholder = '선택' }: { text: string; placeholder?: string }) {
@@ -56,11 +56,100 @@ interface Props {
   embedded?: boolean;
 }
 
+type LCLineRow = {
+  po_line_id?: string;
+  product_id: string;
+  product_name: string;
+  product_code: string;
+  spec_wp: number;
+  po_quantity: number;
+  quantity: string;
+  unit_price_usd_wp?: number;
+  item_type: 'main' | 'spare';
+  payment_type: 'paid' | 'free';
+};
+
 // 소수점 포함 천단위 포맷
 function fmtDecimal(v: string): string {
   const parts = v.replace(/[^0-9.]/g, '').split('.');
   const intPart = parts[0] ? parseInt(parts[0], 10).toLocaleString('ko-KR') : '';
   return parts.length > 1 ? `${intPart}.${parts[1]}` : intPart;
+}
+
+function parseIntText(v: string): number {
+  const n = parseInt(v.replace(/[^0-9]/g, ''), 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function fmtIntText(v: string): string {
+  const n = parseIntText(v);
+  return n > 0 ? n.toLocaleString('ko-KR') : '';
+}
+
+function lineProduct(line: POLineItem, products: Product[]) {
+  return products.find((p) => p.product_id === line.product_id);
+}
+
+function poLineSpecWp(line: POLineItem, products: Product[]): number {
+  const prod = lineProduct(line, products);
+  return prod?.spec_wp ?? line.products?.spec_wp ?? line.spec_wp ?? 0;
+}
+
+function poLineUnitUSDWp(line: POLineItem, specWp: number): number | undefined {
+  if (line.unit_price_usd_wp != null && line.unit_price_usd_wp > 0) return line.unit_price_usd_wp;
+  if (line.unit_price_usd != null && specWp > 0) return line.unit_price_usd / specWp;
+  if (line.total_amount_usd != null && line.quantity > 0 && specWp > 0) return line.total_amount_usd / (line.quantity * specWp);
+  return undefined;
+}
+
+function buildRowsFromPOLines(lines: POLineItem[], products: Product[], quantityLimit?: number): LCLineRow[] {
+  const paidLines = lines.filter((l) => l.payment_type == null || l.payment_type === 'paid');
+  const sourceLines = paidLines.length > 0 ? paidLines : lines;
+  let remaining = quantityLimit && quantityLimit > 0 ? quantityLimit : undefined;
+  return sourceLines.map((line) => {
+    const specWp = poLineSpecWp(line, products);
+    const prod = lineProduct(line, products);
+    const qty = remaining == null ? line.quantity : Math.min(line.quantity, Math.max(0, remaining));
+    if (remaining != null) remaining -= qty;
+    return {
+      po_line_id: line.po_line_id,
+      product_id: line.product_id,
+      product_name: prod?.product_name ?? line.products?.product_name ?? line.product_name ?? '—',
+      product_code: prod?.product_code ?? line.products?.product_code ?? line.product_code ?? '—',
+      spec_wp: specWp,
+      po_quantity: line.quantity,
+      quantity: qty > 0 ? String(qty) : '',
+      unit_price_usd_wp: poLineUnitUSDWp(line, specWp),
+      item_type: line.item_type ?? 'main',
+      payment_type: line.payment_type ?? 'paid',
+    };
+  });
+}
+
+function buildRowsFromLCLines(lines: LCLineItem[], poLines: POLineItem[], products: Product[]): LCLineRow[] {
+  return lines.map((line) => {
+    const poLine = poLines.find((p) => p.po_line_id === line.po_line_id) ?? poLines.find((p) => p.product_id === line.product_id);
+    const prod = products.find((p) => p.product_id === line.product_id);
+    const specWp = prod?.spec_wp ?? line.products?.spec_wp ?? poLine?.products?.spec_wp ?? poLine?.spec_wp ?? line.spec_wp ?? 0;
+    const unit = line.unit_price_usd_wp ?? (line.amount_usd != null && line.quantity > 0 && specWp > 0 ? line.amount_usd / (line.quantity * specWp) : poLine ? poLineUnitUSDWp(poLine, specWp) : undefined);
+    return {
+      po_line_id: line.po_line_id,
+      product_id: line.product_id,
+      product_name: prod?.product_name ?? line.products?.product_name ?? poLine?.products?.product_name ?? poLine?.product_name ?? line.product_name ?? '—',
+      product_code: prod?.product_code ?? line.products?.product_code ?? poLine?.products?.product_code ?? poLine?.product_code ?? line.product_code ?? '—',
+      spec_wp: specWp,
+      po_quantity: poLine?.quantity ?? line.quantity,
+      quantity: String(line.quantity),
+      unit_price_usd_wp: unit,
+      item_type: line.item_type ?? poLine?.item_type ?? 'main',
+      payment_type: line.payment_type ?? poLine?.payment_type ?? 'paid',
+    };
+  });
+}
+
+function rowAmountUSD(row: LCLineRow, qty: number): number {
+  if (row.payment_type === 'free') return 0;
+  return qty * row.spec_wp * (row.unit_price_usd_wp ?? 0);
 }
 
 export default function LCForm({ open, onOpenChange, onSubmit, editData, defaultPoId, embedded = false }: Props) {
@@ -73,6 +162,8 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
   const [poLines, setPoLines] = useState<POLineItem[]>([]);
   const [poTts, setPoTts] = useState<TTRemittance[]>([]);
   const [poLcs, setPoLcs] = useState<LCRecord[]>([]);
+  const [lcLineRows, setLcLineRows] = useState<LCLineRow[]>([]);
+  const [savedLcLinesLoaded, setSavedLcLinesLoaded] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [poPickerOpen, setPoPickerOpen] = useState(false);
   const [poPickerLines, setPoPickerLines] = useState<Record<string, POLineItem[]>>({});
@@ -119,7 +210,7 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
   // PO 선택 시 PO 라인/TT/LC 로드 (4박스 자동표시용)
   const watchedPoId = watch('po_id');
   useEffect(() => {
-    if (!watchedPoId) { setPoLines([]); setPoTts([]); setPoLcs([]); return; }
+    if (!watchedPoId) { setPoLines([]); setPoTts([]); setPoLcs([]); setLcLineRows([]); return; }
     // 새 LC 등록 시 PO 선택/고정 경로 모두 PO 법인을 기본값으로 맞춘다.
     if (!editData) {
       const po = pos.find((p) => p.po_id === watchedPoId);
@@ -138,6 +229,8 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
     if (open) {
       setSubmitError('');
       setFilterMfg('');
+      setLcLineRows([]);
+      setSavedLcLinesLoaded(!editData);
       if (editData) {
         reset({ lc_number: editData.lc_number ?? '', po_id: editData.po_id, company_id: editData.company_id, bank_id: editData.bank_id, open_date: editData.open_date?.slice(0, 10) ?? '', amount_usd: editData.amount_usd, target_qty: editData.target_qty ?? '', target_mw: editData.target_mw ?? '', usance_days: editData.usance_days ?? '', usance_type: editData.usance_type ?? '', maturity_date: editData.maturity_date?.slice(0, 10) ?? '', status: editData.status, memo: editData.memo ?? '' });
         setAmountUsdDisplay(fmtDecimal(editData.amount_usd?.toString() ?? ''));
@@ -153,10 +246,66 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
     }
   }, [open, editData, reset, selectedCompanyId, defaultPoId]);
 
+  // 수정 모드: 기존 LC 품목 명세를 먼저 불러온다. 없는 과거 LC는 PO 라인에서 복원한다.
+  useEffect(() => {
+    if (!open || !editData?.lc_id) return;
+    let cancelled = false;
+    setSavedLcLinesLoaded(false);
+    fetchWithAuth<LCLineItem[]>(`/api/v1/lcs/${editData.lc_id}/lines`)
+      .then((lines) => {
+        if (cancelled) return;
+        if (lines.length > 0) {
+          setLcLineRows(buildRowsFromLCLines(lines, poLines, products));
+        } else {
+          setLcLineRows([]);
+        }
+        setSavedLcLinesLoaded(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSavedLcLinesLoaded(true);
+      });
+    return () => { cancelled = true; };
+  }, [open, editData?.lc_id, poLines, products]);
+
+  // 신규 LC: PO 품목을 LC 품목 명세로 자동 펼친다. 편집 중 과거 LC도 저장된 라인이 없으면 target_qty 기준으로 복원한다.
+  useEffect(() => {
+    if (!open || !watchedPoId || poLines.length === 0) return;
+    if (editData && !savedLcLinesLoaded) return;
+    if (editData && lcLineRows.length > 0) return;
+    const quantityLimit = editData?.target_qty && editData.target_qty > 0 ? editData.target_qty : undefined;
+    setLcLineRows(buildRowsFromPOLines(poLines, products, quantityLimit));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, watchedPoId, poLines, products, editData?.lc_id, editData?.target_qty, savedLcLinesLoaded]);
+
+  const lcLineTotals = useMemo(() => {
+    return lcLineRows.reduce((acc, row) => {
+      const qty = parseIntText(row.quantity);
+      const capacityKW = qty * row.spec_wp / 1000;
+      const amountUSD = rowAmountUSD(row, qty);
+      acc.quantity += qty;
+      acc.capacityKW += capacityKW;
+      acc.amountUSD += amountUSD;
+      return acc;
+    }, { quantity: 0, capacityKW: 0, amountUSD: 0 });
+  }, [lcLineRows]);
+
+  useEffect(() => {
+    if (!open || lcLineRows.length === 0) return;
+    const mw = lcLineTotals.capacityKW / 1000;
+    setValue('target_qty', (lcLineTotals.quantity || '') as unknown as number, { shouldDirty: true });
+    setTargetQtyDisplay(lcLineTotals.quantity > 0 ? lcLineTotals.quantity.toLocaleString('ko-KR') : '');
+    setValue('target_mw', (mw > 0 ? Number(mw.toFixed(4)) : '') as unknown as number, { shouldDirty: true });
+    setTargetMwDisplay(mw > 0 ? mw.toFixed(4) : '');
+    setValue('amount_usd', (lcLineTotals.amountUSD > 0 ? Number(lcLineTotals.amountUSD.toFixed(2)) : '') as unknown as number, { shouldDirty: true });
+    setAmountUsdDisplay(lcLineTotals.amountUSD > 0 ? fmtDecimal(lcLineTotals.amountUSD.toFixed(2)) : '');
+  }, [open, lcLineRows.length, lcLineTotals.quantity, lcLineTotals.capacityKW, lcLineTotals.amountUSD, setValue]);
+
   // F11: target_qty → target_mw(용량) + amount_usd 자동 계산
   // 다중 라인 PO 대응: 가중평균 단가(USD/module), 가중평균 spec_wp 사용
   const watchedQty = watch('target_qty');
   useEffect(() => {
+    if (lcLineRows.length > 0) return;
     if (lastManualField.current === 'mw') { lastManualField.current = null; return; }
     if (watchedQty === '' || watchedQty == null) return;
     const qty = Number(watchedQty);
@@ -210,8 +359,42 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
   const handle = async (data: FormData) => {
     setSubmitError('');
     const payload: Record<string, unknown> = { ...data };
-    if (data.target_qty === '' || data.target_qty === undefined) delete payload.target_qty;
-    if (data.target_mw === '' || data.target_mw === undefined) delete payload.target_mw;
+    if (lcLineRows.length > 0) {
+      const overRow = lcLineRows.find((row) => {
+        const qty = parseIntText(row.quantity);
+        return row.po_quantity > 0 && qty > row.po_quantity;
+      });
+      if (overRow) {
+        setSubmitError(`${overRow.product_name}의 LC 수량이 PO 수량을 초과했습니다`);
+        return;
+      }
+      const lineItems = lcLineRows.map((row) => {
+        const qty = parseIntText(row.quantity);
+        if (qty <= 0) return null;
+        const capacityKW = qty * row.spec_wp / 1000;
+        const amountUSD = rowAmountUSD(row, qty);
+        return {
+          po_line_id: row.po_line_id,
+          product_id: row.product_id,
+          quantity: qty,
+          capacity_kw: Number(capacityKW.toFixed(4)),
+          amount_usd: row.payment_type === 'free' ? 0 : Number(amountUSD.toFixed(2)),
+          unit_price_usd_wp: row.unit_price_usd_wp,
+          item_type: row.item_type,
+          payment_type: row.payment_type,
+        };
+      }).filter(Boolean);
+      if (lineItems.length === 0) {
+        setSubmitError('LC 품목 수량을 1개 이상 입력해 주세요');
+        return;
+      }
+      payload.line_items = lineItems;
+      payload.target_qty = lcLineTotals.quantity;
+      payload.target_mw = Number((lcLineTotals.capacityKW / 1000).toFixed(4));
+      payload.amount_usd = Number(lcLineTotals.amountUSD.toFixed(2));
+    }
+    if (lcLineRows.length === 0 && (data.target_qty === '' || data.target_qty === undefined)) delete payload.target_qty;
+    if (lcLineRows.length === 0 && (data.target_mw === '' || data.target_mw === undefined)) delete payload.target_mw;
     if (data.usance_days === '' || data.usance_days === undefined) delete payload.usance_days;
     if (!data.open_date) delete payload.open_date;
     if (!data.maturity_date) delete payload.maturity_date;
@@ -329,6 +512,68 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
               </div>
             );
           })()}
+          {watchedPoId && lcLineRows.length > 0 && (
+            <div className="rounded-md border bg-card text-xs">
+              <div className="flex items-center justify-between gap-3 border-b px-3 py-2">
+                <div>
+                  <div className="font-semibold">LC 품목 명세</div>
+                  <div className="text-[11px] text-muted-foreground">PO 품목을 그대로 가져옵니다. 분할 개설이면 품목별 LC 수량만 조정하세요.</div>
+                </div>
+                <div className="text-right font-mono tabular-nums">
+                  <div>{lcLineTotals.quantity.toLocaleString('ko-KR')} EA · {(lcLineTotals.capacityKW / 1000).toFixed(4)} MW</div>
+                  <div className="font-semibold">{formatUSD(lcLineTotals.amountUSD)}</div>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px]">
+                  <thead className="bg-muted/40 text-[11px] text-muted-foreground">
+                    <tr>
+                      <th className="p-2 text-left">품목</th>
+                      <th className="p-2 text-left">품번</th>
+                      <th className="p-2 text-right">규격</th>
+                      <th className="p-2 text-right">PO수량</th>
+                      <th className="p-2 text-right">LC수량</th>
+                      <th className="p-2 text-right">용량</th>
+                      <th className="p-2 text-right">금액</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lcLineRows.map((row, idx) => {
+                      const qty = parseIntText(row.quantity);
+                      const over = row.po_quantity > 0 && qty > row.po_quantity;
+                      const amount = rowAmountUSD(row, qty);
+                      const capacityMW = qty * row.spec_wp / 1_000_000;
+                      return (
+                        <tr key={`${row.po_line_id ?? row.product_id}-${idx}`} className="border-t">
+                          <td className="p-2">
+                            <div className="font-medium">{row.product_name}</div>
+                            <div className="text-[11px] text-muted-foreground">{row.item_type === 'spare' ? '스페어' : '본품'} · {row.payment_type === 'free' ? '무상' : '유상'}</div>
+                          </td>
+                          <td className="p-2 font-mono">{row.product_code}</td>
+                          <td className="p-2 text-right font-mono">{row.spec_wp ? `${row.spec_wp}W` : '—'}</td>
+                          <td className="p-2 text-right font-mono">{row.po_quantity.toLocaleString('ko-KR')}</td>
+                          <td className="p-2">
+                            <Input
+                              className={`h-8 text-right font-mono tabular-nums ${over ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                              inputMode="numeric"
+                              value={fmtIntText(row.quantity)}
+                              onChange={(e) => {
+                                const raw = e.target.value.replace(/[^0-9]/g, '');
+                                setLcLineRows((prev) => prev.map((item, i) => i === idx ? { ...item, quantity: raw } : item));
+                              }}
+                            />
+                            {over && <div className="mt-0.5 text-right text-[10px] text-destructive">PO 초과</div>}
+                          </td>
+                          <td className="p-2 text-right font-mono">{capacityMW > 0 ? `${capacityMW.toFixed(4)} MW` : '—'}</td>
+                          <td className="p-2 text-right font-mono">{row.payment_type === 'free' ? '$0.00' : formatUSD(amount)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
           {/* 개설법인 + 은행 — D-094: PO법인과 다를 수 있음 */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -390,7 +635,10 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
                 type="text"
                 inputMode="numeric"
                 value={targetQtyDisplay}
+                readOnly={lcLineRows.length > 0}
+                className={lcLineRows.length > 0 ? 'bg-muted/40 text-muted-foreground' : ''}
                 onChange={(e) => {
+                  if (lcLineRows.length > 0) return;
                   lastManualField.current = 'qty';
                   const raw = e.target.value.replace(/[^0-9]/g, '');
                   const num = raw ? parseInt(raw, 10) : undefined;
@@ -408,7 +656,10 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
                 type="text"
                 inputMode="decimal"
                 value={targetMwDisplay}
+                readOnly={lcLineRows.length > 0}
+                className={lcLineRows.length > 0 ? 'bg-muted/40 text-muted-foreground' : ''}
                 onChange={(e) => {
+                  if (lcLineRows.length > 0) return;
                   const raw = e.target.value.replace(/[^0-9.]/g, '');
                   setTargetMwDisplay(raw);
                   const mw = parseFloat(raw);
@@ -448,7 +699,10 @@ export default function LCForm({ open, onOpenChange, onSubmit, editData, default
               type="text"
               inputMode="decimal"
               value={amountUsdDisplay}
+              readOnly={lcLineRows.length > 0}
+              className={lcLineRows.length > 0 ? 'bg-muted/40 text-muted-foreground' : ''}
               onChange={(e) => {
+                if (lcLineRows.length > 0) return;
                 const raw = e.target.value.replace(/[^0-9.]/g, '');
                 setAmountUsdDisplay(fmtDecimal(raw));
                 const num = parseFloat(raw);

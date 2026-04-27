@@ -99,6 +99,77 @@ func (h *LCHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	response.RespondJSON(w, http.StatusOK, records[0])
 }
 
+// ListLines — GET /api/v1/lcs/{id}/lines — LC 라인아이템 조회
+// 비유: LC 서류에 붙은 품목 명세표를 꺼내 보여주는 것
+func (h *LCHandler) ListLines(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	lines, err := h.fetchLines(id)
+	if err != nil {
+		log.Printf("[LC 라인아이템 조회 실패] lc_id=%s, err=%v", id, err)
+		response.RespondError(w, http.StatusInternalServerError, "LC 품목 목록 조회에 실패했습니다")
+		return
+	}
+
+	response.RespondJSON(w, http.StatusOK, lines)
+}
+
+func (h *LCHandler) fetchLines(lcID string) ([]model.LCLineWithProduct, error) {
+	data, _, err := h.DB.From("lc_line_items").
+		Select("*, products(product_code, product_name, spec_wp, module_width_mm, module_height_mm)", "exact", false).
+		Eq("lc_id", lcID).
+		Execute()
+	if err != nil {
+		return nil, err
+	}
+
+	var lines []model.LCLineWithProduct
+	if err := json.Unmarshal(data, &lines); err != nil {
+		return nil, err
+	}
+	return lines, nil
+}
+
+func (h *LCHandler) replaceLines(lcID string, lines []model.CreateLCLineRequest) error {
+	_, _, err := h.DB.From("lc_line_items").
+		Delete("", "").
+		Eq("lc_id", lcID).
+		Execute()
+	if err != nil {
+		return err
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+
+	inserts := make([]model.LCLineInsert, 0, len(lines))
+	for _, line := range lines {
+		if line.ItemType == "" {
+			line.ItemType = "main"
+		}
+		if line.PaymentType == "" {
+			line.PaymentType = "paid"
+		}
+		inserts = append(inserts, model.LCLineInsert{
+			LCID:           lcID,
+			POLineID:       line.POLineID,
+			ProductID:      line.ProductID,
+			Quantity:       line.Quantity,
+			CapacityKW:     line.CapacityKW,
+			AmountUSD:      line.AmountUSD,
+			UnitPriceUSDWp: line.UnitPriceUSDWp,
+			ItemType:       line.ItemType,
+			PaymentType:    line.PaymentType,
+			Memo:           line.Memo,
+		})
+	}
+
+	_, _, err = h.DB.From("lc_line_items").
+		Insert(inserts, false, "", "", "").
+		Execute()
+	return err
+}
+
 // Create — POST /api/v1/lcs — LC 등록
 // 비유: 새 LC 개설 서류를 작성하여 서류함에 보관하는 것
 func (h *LCHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -116,7 +187,7 @@ func (h *LCHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data, _, err := h.DB.From("lc_records").
-		Insert(req, false, "", "", "").
+		Insert(model.NewLCRecordInsert(req), false, "", "", "").
 		Execute()
 	if err != nil {
 		log.Printf("[LC 등록 실패] %v", err)
@@ -133,6 +204,15 @@ func (h *LCHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	if len(created) == 0 {
 		response.RespondError(w, http.StatusInternalServerError, "LC 등록 결과를 확인할 수 없습니다")
+		return
+	}
+
+	if err := h.replaceLines(created[0].LCID, req.LineItems); err != nil {
+		log.Printf("[LC 라인아이템 등록 실패] lc_id=%s err=%v", created[0].LCID, err)
+		if _, _, cleanupErr := h.DB.From("lc_records").Delete("", "").Eq("lc_id", created[0].LCID).Execute(); cleanupErr != nil {
+			log.Printf("[LC 라인아이템 실패 후 본문 정리 실패] lc_id=%s err=%v", created[0].LCID, cleanupErr)
+		}
+		response.RespondError(w, http.StatusInternalServerError, "LC 품목 저장에 실패했습니다")
 		return
 	}
 
@@ -195,7 +275,7 @@ func (h *LCHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data, _, err := h.DB.From("lc_records").
-		Update(req, "", "").
+		Update(model.NewLCRecordUpdate(req), "", "").
 		Eq("lc_id", id).
 		Execute()
 	if err != nil {
@@ -214,6 +294,14 @@ func (h *LCHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if len(updated) == 0 {
 		response.RespondError(w, http.StatusNotFound, "수정할 LC를 찾을 수 없습니다")
 		return
+	}
+
+	if req.LineItems != nil {
+		if err := h.replaceLines(id, req.LineItems); err != nil {
+			log.Printf("[LC 라인아이템 수정 실패] lc_id=%s err=%v", id, err)
+			response.RespondError(w, http.StatusInternalServerError, "LC 품목 저장에 실패했습니다")
+			return
+		}
 	}
 
 	response.RespondJSON(w, http.StatusOK, updated[0])

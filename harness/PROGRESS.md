@@ -16,6 +16,23 @@
 
 ---
 
+## 2026-04-27 세션 긴급 수정 — LC 다품목 PO 대응
+
+### PO 라인아이템 → LC 품목 명세 연동
+
+#### DB / Go API
+- `lc_line_items` 테이블 추가: LC별 `po_line_id`, `product_id`, 수량, 용량, 금액, 단가, 유상/무상, 본품/스페어 저장
+- `CreateLCRequest` / `UpdateLCRequest`에 `line_items` 추가
+- `GET /api/v1/lcs/{id}/lines` 추가
+- LC 등록/수정 시 본문은 `lc_records`, 품목은 `lc_line_items`로 분리 저장
+
+#### 프론트엔드
+- `LCForm`에서 PO 선택 시 유상 PO 품목을 LC 품목 명세로 자동 표시
+- 품목별 LC 수량 조정 가능, 합계 수량/MW/USD는 자동 계산되어 LC 본문에 반영
+- 과거 LC는 저장된 LC 품목이 없으면 기존 `target_qty` 기준으로 PO 라인에서 복원
+
+---
+
 ## 2026-04-16 세션 완료 작업 (2차 — 가용재고↔수주 연동)
 
 ### 가용재고 배정 → 수주 자동 연동 (배정예정 → 수주 pre-fill + alloc 연결)

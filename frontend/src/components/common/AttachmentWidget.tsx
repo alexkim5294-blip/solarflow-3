@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Download, Eye, FileText, Plus, Trash2, Upload } from 'lucide-react';
+import { Download, Eye, FileText, Plus, Trash2, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fetchBlobWithAuth, fetchWithAuth } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
@@ -33,6 +33,7 @@ export default function AttachmentWidget({
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const [preview, setPreview] = useState<{ url: string; name: string } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -49,6 +50,12 @@ export default function AttachmentWidget({
   };
 
   useEffect(() => { load(); }, [entityType, entityId]);
+
+  useEffect(() => {
+    return () => {
+      if (preview?.url) URL.revokeObjectURL(preview.url);
+    };
+  }, [preview?.url]);
 
   const upload = async (file: File | undefined) => {
     if (!file) return;
@@ -76,23 +83,33 @@ export default function AttachmentWidget({
     }
   };
 
-  const openBlob = async (file: DocumentFile, preview: boolean) => {
+  const previewFile = async (file: DocumentFile) => {
     try {
       const res = await fetchBlobWithAuth(`/api/v1/attachments/${file.file_id}/download`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      if (preview) {
-        window.open(url, '_blank', 'noopener,noreferrer');
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
-        return;
-      }
+      setPreview((current) => {
+        if (current?.url) URL.revokeObjectURL(current.url);
+        return { url, name: file.original_name };
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '파일을 열 수 없습니다');
+    }
+  };
+
+  const downloadFile = async (file: DocumentFile) => {
+    try {
+      const res = await fetchBlobWithAuth(`/api/v1/attachments/${file.file_id}/download`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = file.original_name;
+      a.rel = 'noopener';
       document.body.appendChild(a);
       a.click();
       a.remove();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       setError(err instanceof Error ? err.message : '파일을 열 수 없습니다');
     }
@@ -147,10 +164,10 @@ export default function AttachmentWidget({
                 {formatBytes(file.size_bytes)} · {formatDate(file.created_at)}
               </p>
             </div>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openBlob(file, true)} title="미리보기">
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => previewFile(file)} title="미리보기">
               <Eye className="h-3.5 w-3.5" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openBlob(file, false)} title="다운로드">
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => downloadFile(file)} title="다운로드">
               <Download className="h-3.5 w-3.5" />
             </Button>
             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => remove(file)} title="삭제">
@@ -159,6 +176,31 @@ export default function AttachmentWidget({
           </div>
         ))}
       </div>
+
+      {preview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+          <div className="flex h-[86vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl">
+            <div className="flex items-center justify-between gap-3 border-b px-4 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{preview.name}</p>
+                <p className="text-[11px] text-muted-foreground">PDF 미리보기</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setPreview((current) => {
+                  if (current?.url) URL.revokeObjectURL(current.url);
+                  return null;
+                })}
+                title="닫기"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <iframe className="min-h-0 flex-1 bg-muted" src={preview.url} title={preview.name} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -37,8 +37,9 @@ export default function AttachmentWidget({
   const [files, setFiles] = useState<DocumentFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [preview, setPreview] = useState<{ url: string; name: string } | null>(null);
+  const [preview, setPreview] = useState<{ url: string; file: DocumentFile } | null>(null);
 
   const accessUrl = async (file: DocumentFile, disposition: 'inline' | 'attachment') => {
     const params = new URLSearchParams({ disposition });
@@ -90,24 +91,38 @@ export default function AttachmentWidget({
 
   const previewFile = async (file: DocumentFile) => {
     try {
-      setPreview({ url: await accessUrl(file, 'inline'), name: file.original_name });
+      setPreview({ url: await accessUrl(file, 'inline'), file });
     } catch (err) {
       setError(err instanceof Error ? err.message : '파일을 열 수 없습니다');
     }
   };
 
   const downloadFile = async (file: DocumentFile) => {
+    let objectUrl = '';
+    setDownloadingId(file.file_id);
+    setError('');
     try {
       const url = await accessUrl(file, 'attachment');
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) {
+        throw new Error('파일 사본을 만들 수 없습니다');
+      }
+      const blob = await res.blob();
+      objectUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
+      a.href = objectUrl;
       a.download = file.original_name;
       a.rel = 'noopener';
       document.body.appendChild(a);
       a.click();
       a.remove();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '파일을 열 수 없습니다');
+      setError(err instanceof Error ? err.message : '파일 사본을 다운로드할 수 없습니다');
+    } finally {
+      setDownloadingId(null);
+      if (objectUrl) {
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      }
     }
   };
 
@@ -163,8 +178,16 @@ export default function AttachmentWidget({
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => previewFile(file)} title="미리보기">
               <Eye className="h-3.5 w-3.5" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => downloadFile(file)} title="다운로드">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              disabled={downloadingId === file.file_id}
+              onClick={() => downloadFile(file)}
+              title="사본 다운로드"
+            >
               <Download className="h-3.5 w-3.5" />
+              <span className="ml-1 hidden sm:inline">{downloadingId === file.file_id ? '준비 중' : '사본'}</span>
             </Button>
             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => remove(file)} title="삭제">
               <Trash2 className="h-3.5 w-3.5" />
@@ -178,17 +201,29 @@ export default function AttachmentWidget({
           <div className="flex h-[86vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl">
             <div className="flex items-center justify-between gap-3 border-b px-4 py-2">
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{preview.name}</p>
+                <p className="truncate text-sm font-semibold">{preview.file.original_name}</p>
                 <p className="text-[11px] text-muted-foreground">PDF 미리보기</p>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setPreview(null)}
-                title="닫기"
-              >
-                <X className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={downloadingId === preview.file.file_id}
+                  onClick={() => downloadFile(preview.file)}
+                  title="사본 다운로드"
+                >
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  {downloadingId === preview.file.file_id ? '준비 중' : '사본 다운로드'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setPreview(null)}
+                  title="닫기"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             <object className="min-h-0 flex-1 bg-white" data={`${preview.url}#toolbar=1&navpanes=0`} type="application/pdf">
               <div className="flex h-full flex-col items-center justify-center gap-3 bg-background p-6 text-center">

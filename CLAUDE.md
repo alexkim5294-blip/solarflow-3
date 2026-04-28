@@ -42,7 +42,12 @@ cd backend && ./scripts/check_schema.sh
 
 이 절차를 빠뜨리면: PostgREST PGRST204 → Go 500 → 프론트엔드 저장 실패 (단가/수량 유실처럼 보임)
 
-## Go 백엔드 변경 시 필수 절차
+## 플랫폼별 운영 절차
+
+- **macOS** (프로덕션 워크스테이션): 아래 "Go 백엔드 변경 시 필수 절차" 따름. launchd 데몬 + codesign.
+- **Windows** (개발용): `harness/WINDOWS.md` 참조. launchctl/codesign 무관, 터미널 포그라운드 실행.
+
+## Go 백엔드 변경 시 필수 절차 (macOS)
 ⚠️ macOS 26.4+ 코드 서명 필수 — 서명 없는 바이너리는 launchd가 즉시 SIGKILL
 
 Go 소스 수정 후 반드시 아래 3단계를 순서대로 실행:

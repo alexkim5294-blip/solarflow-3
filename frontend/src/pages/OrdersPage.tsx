@@ -93,8 +93,16 @@ export default function OrdersPage() {
   // URL 탭 파라미터 읽기 (사이드바 수주/수금 링크 구분)
   const urlTab = new URLSearchParams(_loc.search).get('tab') ?? 'orders';
   const [activeTab, setActiveTab] = useState(urlTab);
+  const [orderFormOpen, setOrderFormOpen] = useState(false);
+  // 가용재고 배정 → 수주 자동 연동
+  const [pendingAllocId, setPendingAllocId] = useState<string | null>(null);
+  const [pendingLinkedAllocId, setPendingLinkedAllocId] = useState<string | null>(null); // 연관 미착품 alloc_id
+  const [orderFormPrefill, setOrderFormPrefill] = useState<OrderPrefillData | null>(null);
+
+  // URL → 상태 동기화
   useEffect(() => {
     const t = new URLSearchParams(_loc.search).get('tab') ?? 'orders';
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setActiveTab(t);
     setSelectedOrder(null);
   }, [_loc.key, _loc.search]);
@@ -161,11 +169,6 @@ export default function OrdersPage() {
     setActiveTab(tab);
     navigate(tab === 'orders' ? '/orders' : `/orders?tab=${tab}`, { replace: true });
   };
-  const [orderFormOpen, setOrderFormOpen] = useState(false);
-  // 가용재고 배정 → 수주 자동 연동
-  const [pendingAllocId, setPendingAllocId] = useState<string | null>(null);
-  const [pendingLinkedAllocId, setPendingLinkedAllocId] = useState<string | null>(null); // 연관 미착품 alloc_id
-  const [orderFormPrefill, setOrderFormPrefill] = useState<OrderPrefillData | null>(null);
 
   // 탭 2: 출고
   const [obStatusFilter, setObStatusFilter] = useState('');
@@ -231,6 +234,8 @@ export default function OrdersPage() {
       order.product_id
     );
     if (incomingOrders.length === 0) {
+      // 빈 결과 즉시 반영 (외부 데이터 변경에 따른 동기화)
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOrderSourceHints({});
       return;
     }

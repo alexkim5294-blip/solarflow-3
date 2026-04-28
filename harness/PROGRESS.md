@@ -9,9 +9,9 @@
 | 인프라 | Mac mini (Go+Rust+PostgREST+Caddy+PostgreSQL) + Supabase Auth(인증만) + Tailscale(외부접속) |
 | 프론트엔드 | Caddy 정적 서빙 (dist/) — localhost:5173, Tailscale 100.123.70.19:5173 |
 | DB | 로컬 PostgreSQL + PostgREST (D-075, D-076) |
-| Go 테스트 | 최근 기록 116개 PASS |
-| Rust 테스트 | 최근 기록 75개 PASS |
-| DECISIONS | D-001~D-091 (89개, D-080/D-081 번호 공백) |
+| Go 테스트 | 116개 PASS |
+| Rust 테스트 | 75개 PASS |
+| DECISIONS | D-001~D-092 (90개, D-080/D-081 번호 공백) |
 | launchd | 5개 서비스 자동 시작 |
 
 ---
@@ -29,6 +29,41 @@
 - `document_files` 첨부파일 메타데이터/업로드/미리보기/다운로드 API + B/L 상세 서류 탭
 - 출고별 운송비 입력 패널 (`expenses`의 `transport`, `outbound_id` 필터)
 - Rust 계산 API에 `/api/calc/inventory-turnover` 추가
+
+---
+
+## 2026-04-28 세션 — 개발속도 가속 기반 작업
+
+### 검증/반영 원클릭화
+
+- 루트 `scripts/` 추가
+  - `verify_all.sh`: Go build/vet/test, 백엔드 규칙 lint, Request 구조체↔DB 스키마 검사, Rust test, 프론트 build 일괄 실행
+  - `apply_go.sh`: Go 빌드 → 코드서명 → launchd bootout/bootstrap
+  - `apply_rust.sh`: Rust release 빌드 → 코드서명 → launchd stop/start
+  - `apply_frontend.sh`: Caddy 정적 서빙용 `dist/` 빌드
+  - `scripts/README.md`: 사용법과 옵션 정리
+- 기존 백엔드 RULES lint 부채 33건이 있어 기본 실행에서는 advisory로 표시, `STRICT_RULES=1`일 때 차단하도록 설정
+
+### 프론트 반복 UI 부품화
+
+- `frontend/src/components/common/GroupedMiniTable.tsx` 추가
+  - LC/T/T/B/L 등 하위 미니 테이블 재사용 기반
+- `frontend/src/components/common/StatusPill.tsx` 추가
+  - 상태 라벨 pill 공통화
+- `frontend/src/components/common/ProgressMiniBar.tsx` 추가
+  - T/T, LC, MW 진행률 바 공통화
+- `PODetailView`의 LC/T/T 서브테이블과 진행률 표시에 공통 컴포넌트 우선 적용
+
+### 검증 결과
+
+- `npm run build` 성공
+- `./scripts/verify_all.sh` 성공
+  - Go build/vet/test 성공
+  - Rust test 성공 (75개 PASS)
+  - Frontend build 성공
+- 제한: 현재 작업 환경에 `psql` 없음 → schema check skip
+- 제한: 기존 RULES lint 부채 33건 advisory 표시
+- `graphify update .` 시도했으나 현재 환경에 `graphify` 명령 없음
 
 ---
 

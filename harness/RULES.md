@@ -4,7 +4,7 @@
 - Go: 프론트엔드 (화면 UI, HTTP 처리, 자주 변경되는 부분)
 - Rust: 백엔드 계산엔진 (원가, 환율, 재고집계, 마진, LC만기 등)
 - Go↔Rust: REST API 게이트웨이로 통신
-- DB: Supabase PostgreSQL
+- DB: 로컬 PostgreSQL + PostgREST, 인증은 Supabase Auth 사용
 - 이 구조를 임의로 변경하지 않음
 
 ## 코드 작성 규칙
@@ -33,7 +33,7 @@
    □ struct 타입 사용했는가?
    □ 모든 error 처리했는가?
    □ 입력값 검증 있는가?
-   □ 설계문서(SolarFlow_설계문서.md) 필드 누락 없는가?
+   □ 설계문서(harness/SolarFlow_설계문서_통합판.md) 필드 누락 없는가?
    □ 에러 응답 형식 통일했는가?
    □ 인증 체크가 적용되었는가?
    □ Rust 담당 로직이 Go에 들어가지 않았는가?
@@ -59,7 +59,7 @@
 ---
 
 ## 참조 문서
-- 설계문서: SolarFlow_설계문서.md (프로젝트 루트)
+- 설계문서: harness/SolarFlow_설계문서_통합판.md
 - 이 규칙은 모든 Go/Rust 코드 작업에 적용
 
 ---

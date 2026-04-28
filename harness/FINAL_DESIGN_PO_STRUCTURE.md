@@ -2,7 +2,9 @@
 
 **확정일**: 2026-04-08
 **승인**: Alex(도메인), 감리자(설계검증), 재이(코디네이터)
-**용도**: Claude Code 실행 기준 문서. 이 문서에 없는 변경은 금지.
+**현재 상태(2026-04-28)**: 과거 PO/FIFO GAP 설계 메모. 현재 실행 기준은 `harness/SolarFlow_설계문서_통합판.md`, `harness/PROGRESS.md`, `harness/DECISIONS.md`입니다.
+
+주의: 이 문서에는 아직 코드에 없는 Phase B/C 항목이 포함되어 있습니다. 현재 코드에 구현된 것은 PO→입고 자동채움, `bl_line_items.po_line_id`, `outbound_bl_items` 기반 출고-B/L 연결, B/L 출고추적 탭, LC 라인아이템(`lc_line_items`)입니다. `bl_shipments.outbound_status`, `outbound_fifo_details`, Rust `fifo-match`는 현재 코드 기준 미구현입니다.
 
 ---
 

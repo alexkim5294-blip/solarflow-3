@@ -18,6 +18,10 @@ type POHandler struct {
 	DB *supa.Client
 }
 
+type deletePurchaseOrderRPCRequest struct {
+	POID string `json:"p_po_id"`
+}
+
 // NewPOHandler — POHandler 생성자
 func NewPOHandler(db *supa.Client) *POHandler {
 	return &POHandler{DB: db}
@@ -182,7 +186,7 @@ func (h *POHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Execute()
 	if err != nil {
 		log.Printf("[발주 등록 실패] req=%+v err=%v", req, err)
-		response.RespondError(w, http.StatusInternalServerError, "발주 등록 실패: "+err.Error())
+		response.RespondError(w, http.StatusInternalServerError, "발주 등록에 실패했습니다")
 		return
 	}
 
@@ -223,17 +227,21 @@ func (h *POHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var prevStatus string
 	{
 		prev, _, perr := h.DB.From("purchase_orders").Select("status", "exact", false).Eq("po_id", id).Execute()
-		if perr == nil {
-			var rows []struct {
-				Status string `json:"status"`
-			}
-			if err := json.Unmarshal(prev, &rows); err != nil {
-				log.Printf("[발주 수정] 기존 status 디코딩 실패 po_id=%s err=%v — status 전환 감지 생략", id, err)
-			} else if len(rows) > 0 {
-				prevStatus = rows[0].Status
-			}
-		} else {
-			log.Printf("[발주 수정] 기존 status 조회 실패 po_id=%s err=%v — status 전환 감지 생략", id, perr)
+		if perr != nil {
+			log.Printf("[발주 기존 상태 조회 실패] po_id=%s err=%v", id, perr)
+			response.RespondError(w, http.StatusInternalServerError, "발주 기존 상태 조회에 실패했습니다")
+			return
+		}
+		var rows []struct {
+			Status string `json:"status"`
+		}
+		if err := json.Unmarshal(prev, &rows); err != nil {
+			log.Printf("[발주 기존 상태 디코딩 실패] po_id=%s err=%v", id, err)
+			response.RespondError(w, http.StatusInternalServerError, "발주 기존 상태 처리에 실패했습니다")
+			return
+		}
+		if len(rows) > 0 {
+			prevStatus = rows[0].Status
 		}
 	}
 
@@ -243,7 +251,7 @@ func (h *POHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Execute()
 	if err != nil {
 		log.Printf("[발주 수정 실패] id=%s req=%+v err=%v", id, req, err)
-		response.RespondError(w, http.StatusInternalServerError, "발주 수정 실패: "+err.Error())
+		response.RespondError(w, http.StatusInternalServerError, "발주 수정에 실패했습니다")
 		return
 	}
 
@@ -311,17 +319,19 @@ func (h *POHandler) autoInsertPriceHistory(poID string, po model.PurchaseOrder) 
 			Eq("product_id", l.ProductID).
 			Eq("related_po_id", poID).
 			Execute()
-		if eerr == nil {
-			var existRows []struct {
-				ID string `json:"price_history_id"`
-			}
-			if err := json.Unmarshal(exists, &existRows); err != nil {
-				log.Printf("[단가이력 자동등록] 중복 확인 디코딩 실패 product_id=%s po_id=%s err=%v — 중복 INSERT 가능", l.ProductID, poID, err)
-			} else if len(existRows) > 0 {
-				continue
-			}
-		} else {
-			log.Printf("[단가이력 자동등록] 중복 확인 조회 실패 product_id=%s po_id=%s err=%v — 중복 INSERT 가능", l.ProductID, poID, eerr)
+		if eerr != nil {
+			log.Printf("[단가이력 자동등록: 기존 이력 조회 실패] po_id=%s product_id=%s err=%v", poID, l.ProductID, eerr)
+			continue
+		}
+		var existRows []struct {
+			ID string `json:"price_history_id"`
+		}
+		if err := json.Unmarshal(exists, &existRows); err != nil {
+			log.Printf("[단가이력 자동등록: 기존 이력 디코딩 실패] po_id=%s product_id=%s err=%v", poID, l.ProductID, err)
+			continue
+		}
+		if len(existRows) > 0 {
+			continue
 		}
 
 		row := model.CreatePriceHistoryRequest{
@@ -346,38 +356,13 @@ func (h *POHandler) autoInsertPriceHistory(poID string, po model.PurchaseOrder) 
 func (h *POHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	// ① T/T 송금이력 cascade 삭제 (PO 초안 취소 시 계약금도 함께 소멸)
-	if _, _, derr := h.DB.From("tt_remittances").
-		Delete("", "").
-		Eq("po_id", id).
-		Execute(); derr != nil {
-		log.Printf("[PO 삭제] tt_remittances cascade 실패 po_id=%s err=%v", id, derr)
-	}
-
-	// ② 단가이력 삭제 (PO 등록 시 자동 생성, FK: price_histories.related_po_id)
-	if _, _, derr := h.DB.From("price_histories").
-		Delete("", "").
-		Eq("related_po_id", id).
-		Execute(); derr != nil {
-		log.Printf("[PO 삭제] price_histories cascade 실패 po_id=%s err=%v", id, derr)
-	}
-
-	// ③ 라인아이템 삭제 (DB는 CASCADE이지만 명시적으로 처리)
-	if _, _, derr := h.DB.From("po_line_items").
-		Delete("", "").
-		Eq("po_id", id).
-		Execute(); derr != nil {
-		log.Printf("[PO 삭제] po_line_items cascade 실패 po_id=%s err=%v", id, derr)
-	}
-
-	// ④ PO 본체 삭제
-	_, _, err := h.DB.From("purchase_orders").
-		Delete("", "").
-		Eq("po_id", id).
-		Execute()
-	if err != nil {
-		log.Printf("[발주 삭제 실패] id=%s, err=%v", id, err)
-		response.RespondError(w, http.StatusInternalServerError, "발주 삭제에 실패했습니다: "+err.Error())
+	if err := callRPC(h.DB, "sf_delete_purchase_order", deletePurchaseOrderRPCRequest{POID: id}); err != nil {
+		log.Printf("[발주 트랜잭션 삭제 실패] id=%s, err=%v", id, err)
+		if isRPCNotFound(err) {
+			response.RespondError(w, http.StatusNotFound, "발주를 찾을 수 없습니다")
+			return
+		}
+		response.RespondError(w, http.StatusInternalServerError, "발주 삭제에 실패했습니다")
 		return
 	}
 

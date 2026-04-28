@@ -11,7 +11,7 @@
 | DB | 로컬 PostgreSQL + PostgREST (D-075, D-076) |
 | Go 테스트 | 116개 PASS |
 | Rust 테스트 | 75개 PASS |
-| DECISIONS | D-001~D-093 (91개, D-080/D-081 번호 공백) |
+| DECISIONS | D-001~D-094 (92개, D-080/D-081 번호 공백) |
 | launchd | 5개 서비스 자동 시작 |
 
 ---
@@ -115,6 +115,31 @@
 - `harness/run_e2e_smoke.sh` 추가
   - `psql -v ON_ERROR_STOP=1`로 실행하여 SQL 내부 `RAISE EXCEPTION` 발생 시 자동 실패 처리
   - `DATABASE_URL` 또는 `SUPABASE_DB_URL` 환경변수 사용 가능
+
+---
+
+## 2026-04-28 세션 긴급 수정 — 핸들러 에러 처리 + 트랜잭션화
+
+### 생산 데이터 정합성 보강
+
+#### DB / Go API
+- `backend/migrations/036_handler_transaction_rpcs.sql` 추가
+  - 출고 생성/수정/삭제: `sf_create_outbound`, `sf_update_outbound`, `sf_delete_outbound`
+  - PO 삭제: `sf_delete_purchase_order`
+  - 면장 삭제: `sf_delete_declaration`
+  - 수주 출고 진행률: `sf_recalculate_order_progress`
+- Go 핸들러의 다단계 DB 변경을 PostgREST RPC 1회 호출로 전환
+  - 중간 실패 시 PostgreSQL 트랜잭션 전체 롤백
+  - 출고 B/L 연결, 매출 연결 해제/삭제, 수주 진행률 갱신 포함
+- 첨부파일 삭제는 파일을 `.deleting`으로 먼저 이동한 뒤 DB 레코드를 삭제하고, DB 삭제 실패 시 파일을 원위치로 복구
+- 대상 파일의 무시된 `Delete`, `os.Remove`, `json.Unmarshal`, `map[string]interface{}` 패턴 제거
+
+#### 검증
+- `go build ./...` PASS
+- `go vet ./...` PASS
+- `go test ./...` PASS
+- `git diff --check` PASS
+- `lint_rules.sh` PASS (0건)
 
 ---
 

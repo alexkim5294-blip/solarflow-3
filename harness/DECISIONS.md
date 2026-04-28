@@ -486,3 +486,10 @@
 - **결정**: 전체 검증과 별도로 `scripts/verify_changed.sh`를 둔다. 변경 파일 경로를 기준으로 backend, engine, frontend, shell syntax 검증만 선택 실행하고, 알 수 없는 경로가 바뀌면 `verify_all.sh`로 자동 전환한다.
 - **이유**: 모든 작업마다 Go/Rust/프론트 전체 검증을 돌리면 UI 단순 변경이나 문서 변경에서도 시간이 불필요하게 든다. 변경 범위에 맞는 검증을 먼저 돌리고, 릴리즈/PR 전에는 전체 검증을 쓰는 2단 구조가 개발 속도와 안정성의 균형이 좋다.
 - **날짜**: 2026-04-28
+
+## D-094: 핸들러 다단계 변경은 PostgREST RPC 트랜잭션으로 처리
+- **결정**: 출고 생성/수정/삭제, PO 삭제, 면장 삭제처럼 여러 테이블을 함께 변경하는 핸들러는 Go에서 순차 호출하지 않고 PostgreSQL 함수 1회 호출로 묶는다.
+- **이유**: Go에서 여러 PostgREST 요청을 순서대로 보내면 중간 실패 시 일부 테이블만 변경될 수 있다. PostgreSQL 함수는 단일 문장 트랜잭션으로 실행되어 실패 시 전체 롤백되므로 생산 데이터 정합성 위험을 줄인다.
+- **범위**: `sf_create_outbound`, `sf_update_outbound`, `sf_delete_outbound`, `sf_delete_purchase_order`, `sf_delete_declaration`, `sf_recalculate_order_progress`.
+- **운영 기준**: 함수 추가/변경 후 PostgREST 스키마 캐시를 갱신해야 한다.
+- **날짜**: 2026-04-28

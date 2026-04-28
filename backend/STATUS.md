@@ -1,80 +1,49 @@
-# SolarFlow 3.0 — 프로젝트 진행 상태
+# SolarFlow 3.0 — Backend Status (2026-04-28)
 
-> 새 Claude 대화 시작 시: "SolarFlow 3.0 작업 계속합니다. STATUS.md 확인해주세요."
+> 현재 전체 진행 기준은 `../harness/PROGRESS.md`와 `../harness/STATUS.md`입니다. 이 파일은 backend 관점의 빠른 요약입니다.
 
----
-
-## 📍 현재 위치
+## 현재 위치
 
 | 항목 | 상태 |
 |------|------|
-| **현재 단계** | Phase 1 — 기초 공사 (마스터 관리) |
-| **마지막 작업** | Step 3 완료 — 마스터 6개 CRUD API 전체 동작 확인 |
-| **다음 할 일** | Step 4 — 프론트엔드 마스터 관리 화면 |
-| **마지막 업데이트** | 2026-03-28 21:15 |
+| 현재 단계 | Phase 4 완료 후 실데이터 이관 + 운영 기능 보강 |
+| Go 역할 | API 게이트웨이, CRUD, Auth, Import/Export, Rust CalcProxy |
+| 실행 | Mac mini launchd `com.solarflow.go`, 포트 8080 |
+| DB 접근 | supabase-go → 로컬 PostgREST/Caddy → PostgreSQL |
+| 인증 | Supabase Auth JWT 검증 + user_profiles auto-provision |
+| Rust 연동 | `ENGINE_URL` 설정 시 `/api/v1/calc/*` 프록시 |
 
----
+## 주요 API 그룹
 
-## 🏗️ Phase 1: 기초 공사 (마스터 관리)
+- 마스터: companies, manufacturers, products, partners, warehouses, banks, construction-sites
+- 발주/결제: pos, po lines, lcs, lc lines, tts, limit-changes, price-histories
+- 입고/원가: bls, bl lines, declarations, cost-details, expenses
+- 수주/출고/매출: orders, receipts, receipt-matches, outbounds, sales, inventory allocations
+- 운영 보강: module-demand-forecasts, attachments, notes, users
+- 엑셀/ERP: import 7종, export/amaranth inbound/outbound
+- 계산 프록시: inventory, landed-cost, exchange-compare, lc-fee, lc-limit-timeline, lc-maturity-alert, margin-analysis, customer-analysis, price-trend, supply-forecast, outstanding-list, receipt-match-suggest, search, inventory-turnover
 
-### Step 0: 인프라 배포 ✅ 완료
-### Step 1: DB 마스터 테이블 ✅ 완료
-### Step 2: Go 백엔드 구조 ✅ 완료
-### Step 3: 마스터 CRUD API ✅ 완료
-- [x] 법인(companies) — CRUD + 상태토글
-- [x] 제조사(manufacturers) — CRUD
-- [x] 품번(products) — CRUD + 제조사필터 + 제조사JOIN
-- [x] 거래처(partners) — CRUD + 타입필터
-- [x] 창고(warehouses) — CRUD + 타입필터
-- [x] 은행(banks) — CRUD + 법인필터 + 법인JOIN
-- [x] fly.io 배포 + 전체 API 동작 확인
+## 최근 DB 마이그레이션
 
-### Step 4: 프론트엔드 마스터 화면 ⬜ 다음
+- 031 `module_demand_forecasts`
+- 032 `lc_line_items`
+- 033 `document_files`
+- 034 `document_files` 권한
+- 035 `incidental_expenses` 출고 운송비 컬럼(`outbound_id`, `vehicle_type`, `destination`)
 
----
+## 운영 반영
 
-## 🔮 Phase 2: 핵심 거래 (발주~입고~출고)
-## 🔮 Phase 3: 재고/분석/대시보드
-## 🔮 Phase 4: 연동/고도화
+Go 소스 수정 후 macOS 운영 반영은 코드 서명과 launchd 재등록이 필수입니다.
 
----
+```bash
+cd ~/solarflow-3/backend && go build -o solarflow-go .
+codesign -f -s - solarflow-go
+launchctl bootout gui/501 ~/Library/LaunchAgents/com.solarflow.go.plist 2>/dev/null || true
+launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.solarflow.go.plist
+```
 
-## 🔧 인프라 정보
+## 검증
 
-| 항목 | 값 |
-|------|---|
-| 프론트 URL | https://solarflow-3-frontend.pages.dev |
-| 백엔드 URL | https://solarflow-backend.fly.dev |
-| Supabase | aalxpmfnsjzmhsfkuxnp.supabase.co |
-| GitHub (백엔드) | alexkim5294-blip/solarflow-3 |
-| GitHub (프론트) | alexkim5294-blip/solarflow-3-frontend |
-| 프로젝트 폴더 | ~/solarflow-3/backend (git), ~/solarflow-3/frontend (git) |
-
-## 🌐 동작 중인 API (전체)
-
-| 메서드 | 경로 | 설명 | 필터 |
-|--------|------|------|------|
-| GET | /health | 서버상태 | |
-| GET/POST | /api/v1/companies | 법인 목록/등록 | |
-| GET/PUT | /api/v1/companies/{id} | 법인 상세/수정 | |
-| PATCH | /api/v1/companies/{id}/status | 활성토글 | |
-| GET/POST | /api/v1/manufacturers | 제조사 목록/등록 | |
-| GET/PUT | /api/v1/manufacturers/{id} | 제조사 상세/수정 | |
-| GET/POST | /api/v1/products | 품번 목록/등록 | ?manufacturer_id=&active= |
-| GET/PUT | /api/v1/products/{id} | 품번 상세/수정 | |
-| GET/POST | /api/v1/partners | 거래처 목록/등록 | ?type=supplier/customer/both |
-| GET/PUT | /api/v1/partners/{id} | 거래처 상세/수정 | |
-| GET/POST | /api/v1/warehouses | 창고 목록/등록 | ?type=port/factory/vendor |
-| GET/PUT | /api/v1/warehouses/{id} | 창고 상세/수정 | |
-| GET/POST | /api/v1/banks | 은행 목록/등록 | ?company_id= |
-| GET/PUT | /api/v1/banks/{id} | 은행 상세/수정 | |
-
-## 🔑 기술 결정사항
-
-| 결정 | 선택 | 이유 |
-|------|------|------|
-| Go HTTP 라우터 | chi v5 | 표준 net/http 호환, 깔끔한 라우팅 |
-| DB 접근 | supabase-go | REST API 기반, 설정 간단 |
-| DB | Supabase PostgreSQL | 무료 2개 제한, solarflow-2 재활용 |
-| 호스팅 | Cloudflare Pages + fly.io | 배포 완료 |
-| Supabase 키 | service_role | RLS 없이 전체 접근 (개발단계) |
+- 최근 기록: Go 테스트 116개 PASS
+- 모델/스키마 변경 시: `./scripts/check_schema.sh`
+- 새 마이그레이션 적용 후: PostgREST 스키마 캐시 갱신 필수

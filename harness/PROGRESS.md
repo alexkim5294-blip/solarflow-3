@@ -1,18 +1,34 @@
 # SolarFlow 진행 상황
 
-## 현재 상태 요약 (최종 업데이트: 2026-04-16)
+## 현재 상태 요약 (최종 업데이트: 2026-04-28)
 
 | 항목 | 상태 |
 |------|------|
-| 현재 Phase | **실데이터 이관 + UI 기능 개선 진행 중** |
-| 다음 작업 | 라이젠에너지 T/T 데이터 검증 + PODetailView 서브테이블 개선 |
+| 현재 Phase | **실데이터 이관 + 운영 기능 보강 진행 중** |
+| 다음 작업 | 라이젠에너지 T/T 데이터 검증 + 운영 이관 상태값/첨부/운송비/수요예측 실사용 검증 |
 | 인프라 | Mac mini (Go+Rust+PostgREST+Caddy+PostgreSQL) + Supabase Auth(인증만) + Tailscale(외부접속) |
 | 프론트엔드 | Caddy 정적 서빙 (dist/) — localhost:5173, Tailscale 100.123.70.19:5173 |
 | DB | 로컬 PostgreSQL + PostgREST (D-075, D-076) |
-| Go 테스트 | 116개 PASS |
-| Rust 테스트 | 75개 PASS |
-| DECISIONS | D-001~D-079 (79개) |
+| Go 테스트 | 최근 기록 116개 PASS |
+| Rust 테스트 | 최근 기록 75개 PASS |
+| DECISIONS | D-001~D-091 (89개, D-080/D-081 번호 공백) |
 | launchd | 5개 서비스 자동 시작 |
+
+---
+
+## 2026-04-28 세션 문서 최신화 — 코드 기준 TODO 정리
+
+### 완료로 확인한 이전 TODO
+- **PODetailView 서브테이블 개선**: `LCSubTable`, `TTSubTable`, 종합정보 요약 카드, 4단계 MW 진행률(계약 → LC → 선적 → 입고완료) 구현 확인
+- **LCForm defaultPoId 연결**: PO 목록/PO 상세의 `+ L/C 추가`가 `defaultPoId`를 전달하고, 신규 LCForm에서 해당 PO를 잠금 선택 상태로 표시
+- **B/L별 개별 MW 표시**: PO 목록 펼침 영역에서 B/L 라인별 `capacity_kw` 합산 → `blMwMap`으로 개별 MW 표시
+
+### 코드 기준 추가 반영된 기능
+- `lc_line_items` 기반 LC 품목 명세 저장/조회 (`GET /api/v1/lcs/{id}/lines`)
+- `module_demand_forecasts` 운영 forecast API + 재고 화면 수요 계획 패널
+- `document_files` 첨부파일 메타데이터/업로드/미리보기/다운로드 API + B/L 상세 서류 탭
+- 출고별 운송비 입력 패널 (`expenses`의 `transport`, `outbound_id` 필터)
+- Rust 계산 API에 `/api/calc/inventory-turnover` 추가
 
 ---
 
@@ -147,14 +163,16 @@
 ## 미완료 / 다음 작업 후보
 
 ### 즉시 처리 권장
-1. **PODetailView 서브테이블 개선** — LCSubTable, TTSubTable 구형 Table 컴포넌트 → 그룹화 스타일
-2. **LCForm defaultPoId 연결** — PO탭 `+ L/C 추가` 클릭 시 해당 PO 자동 선택 안 됨
-3. **B/L별 개별 MW 표시** — 입고 현황 미니 테이블에서 BL별 MW가 "—"로 표시됨 (전체 합계만 있음)
+1. **라이젠에너지 T/T 데이터 검증** — DepositStatusPanel의 PO 체인/분납/미납 표시를 실제 데이터로 대조
+2. **운영 이관 입고 상태값 처리** — 기초재고 업로드 시 `completed`/`erp_done`으로 생성 또는 일괄 보정 옵션 확정
+3. **첨부파일 운영 검증** — `SOLARFLOW_FILE_ROOT` 저장 경로, PDF 미리보기/다운로드/삭제 권한 점검
+4. **출고 운송비 실사용 검증** — 출고 상세 운송비 패널과 결재안 운송비 월정산 데이터 흐름 확인
+5. **수요예측 실사용 검증** — `module_demand_forecasts` 수동 계획이 재고/수급전망 판단에 맞게 보이는지 확인
 
 ### 중기 작업
-4. 라이젠에너지 T/T 데이터 사용자 직접 입력 후 DepositStatusPanel 검증
-5. 전체 UI 색상/아이콘 개선 (사용자 요청: 단조로운 디자인 개선, 밤/낮 배경색 등)
-6. PODetailView 종합정보 LC 개설 38.82 MW 표시 정확성 확인 (실제 데이터 2개 LC 합계)
+6. 전체 UI 색상/아이콘 개선 (사용자 요청: 단조로운 디자인 개선, 밤/낮 배경색 등)
+7. PODetailView 종합정보 LC 개설 38.82 MW 표시 정확성 확인 (실제 데이터 2개 LC 합계)
+8. 코드 주석 TODO 중 실제 Rust 연동이 끝난 항목(LandedCostPanel 등) 표현 정리
 
 ### Phase 확장 미해결 (장기)
 - LC 수수료 수동 보정 (D-030)
@@ -177,13 +195,14 @@ launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.solarflow.go.plist
 # Rust 엔진 수정 후
 cd ~/solarflow-3/engine && cargo build --release
 codesign -f -s - target/release/solarflow-engine
-launchctl stop com.solarflow.engine && launchctl start com.solarflow.engine
+launchctl bootout gui/501 ~/Library/LaunchAgents/com.solarflow.engine.plist 2>/dev/null || true
+launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.solarflow.engine.plist
 
 # 프론트엔드 빌드 (Caddy 서빙용)
 cd ~/solarflow-3/frontend && npm run build
 ```
 
-### Rust API 엔드포인트 (15개)
+### Rust API 엔드포인트 (16개)
 - /health, /health/ready
 - /api/calc/inventory (재고 집계)
 - /api/calc/landed-cost (Landed Cost)
@@ -198,6 +217,7 @@ cd ~/solarflow-3/frontend && npm run build
 - /api/calc/outstanding-list (미수금 목록)
 - /api/calc/receipt-match-suggest (수금 매칭 추천)
 - /api/calc/search (자연어 검색)
+- /api/calc/inventory-turnover (재고 회전율)
 
 ## Phase 완료 이력
 
@@ -234,21 +254,21 @@ cd ~/solarflow-3/frontend && npm run build
 ### Phase 4: 프론트엔드 + 연동 + 배포 (완료)
 | 작업 | 감리 점수 | 비고 |
 |------|----------|------|
-| Step 20: 인증 + CORS + CalcProxy | 감리 대기 | CORS, 프록시 15개, users/me, 로그인 UI |
-| Step 21: 레이아웃 + 마스터 CRUD 6개 | 감리 대기 | AppLayout, Sidebar(역할별), DataTable, 6개 마스터 페이지+폼 |
-| Step 22: 재고 화면 + 수급 전망 | 감리 대기 | 3탭(재고/미착품/수급전망), 요약카드, 장기재고Badge, insufficient경고 |
-| Step 23: 입고 관리 (B/L+라인) | 감리 대기 | 목록/상세/생성/수정, 상태6단계, 입고유형4종, 라인아이템CRUD |
-| Step 24: 발주/결제 (PO+LC+TT+단가) | 감리 대기 | 4탭, PO 5서브탭, 입고진행률바, LC만기임박, 단가인상/인하표시 |
-| Step 25: 출고/판매 | 감리 대기 | 2탭(출고관리/매출현황), 취소3단계, Wp단가자동계산, 그룹거래Switch, 세금계산서Badge |
-| Step 26: 수주/수금+매칭 | 감리 대기 | 3탭(수주/수금/매칭), 충당소스Badge, 매칭3단계(선택→체크→확정), 자동추천, 차액표시 |
-| Step 27: 면장/원가 | 감리 대기 | 3탭(수입면장/부대비용/환율비교), 원가3단계(FOB→CIF→Landed), Badge, LandedCost 미리보기/저장, 부대비용11유형, price-histories Go라우트추가 |
-| Step 28A: 은행/LC+수요예측 | 감리 대기 | 4탭(한도현황/만기알림/한도변경/LC수요예측), 요약카드4+3개, 사용률bar, Recharts AreaChart, D-Day Badge, 수수료펼침, PO별미개설, 3개월예측+대응방안(D-062) |
-| Step 28B: 대시보드 | 감리 대기 | 역할별분기(admin=Manager/executive=Executive), 카드6개, BarChart+LineChart, 알림9가지, 미착품/수주잔량/미수금프리뷰, Promise.allSettled 섹션별 독립로딩, 장기재고경고 |
-| Step 29A: 엑셀 양식 다운로드+업로드 미리보기 | 감리 대기 | 양식7종(입고/출고/매출/면장/부대비용/수주/수금), ExcelJS dynamic import(별도chunk 930KB), 드롭다운+코드표, 업로드파싱→검증→미리보기, 면장2시트탭, 에러행다운로드, 확정등록비활성(29B), D-063/D-064 |
-| Step 29B: 엑셀 확정 등록 + Import API 7개 | 감리 대기 | 29A즉시수정(통화하드코딩), 지적1(매출outbound_id), 지적2(면장+원가한번에전송), 지적3(B/L기본정보불일치경고), Go Import핸들러7개(inbound/outbound/sales/declarations/expenses/orders/receipts), FK해소+자동계산, ImportResultDialog, ConfirmDialog, 테스트13개PASS |
-| Step 29C: 아마란스10 내보내기 | 감리 대기 | 입고34컬럼+출고35컬럼 excelize, GET /export/amaranth/inbound·outbound, 거래구분/과세구분 매핑, 외화단가/원화단가 자동계산, 기간선택 AmaranthExportDialog, D-067/D-068 |
-| Step 30: 결재안 자동 생성 6유형 | 감리 대기 | 6유형카드선택, LC/BL/PO/거래처 기반 데이터조회, 수입통관부가세(CIF×0.1), approvalTemplates 텍스트생성, 미리보기Textarea수정, 클립보드복사, 수동입력(노란배경), Go변경없음 |
-| Step 31: 메모+검색+알림 | 감리 대기 | Go Note CRUD(소유권검사), 포스트잇 MemoPage+LinkedMemoWidget, Ctrl+K GlobalSearchBar(500ms디바운스), Rust search API연동, SearchPage(이력+예시), useAlerts 분리(useDashboard에서 추출), AlertBell+AlertDropdown, 5분자동갱신, 테스트8개 |
+| Step 20: 인증 + CORS + CalcProxy | ✅ 완료 | CORS, 프록시 16개, users/me, 로그인 UI |
+| Step 21: 레이아웃 + 마스터 CRUD 6개 | ✅ 완료 | AppLayout, Sidebar(역할별), DataTable, 6개 마스터 페이지+폼 |
+| Step 22: 재고 화면 + 수급 전망 | ✅ 완료 | 3탭(재고/미착품/수급전망), 요약카드, 장기재고Badge, insufficient경고 |
+| Step 23: 입고 관리 (B/L+라인) | ✅ 완료 | 목록/상세/생성/수정, 상태6단계, 입고유형4종, 라인아이템CRUD |
+| Step 24: 발주/결제 (PO+LC+TT+단가) | ✅ 완료 | 4탭, PO 5서브탭, 입고진행률바, LC만기임박, 단가인상/인하표시 |
+| Step 25: 출고/판매 | ✅ 완료 | 2탭(출고관리/매출현황), 취소3단계, Wp단가자동계산, 그룹거래Switch, 세금계산서Badge |
+| Step 26: 수주/수금+매칭 | ✅ 완료 | 3탭(수주/수금/매칭), 충당소스Badge, 매칭3단계(선택→체크→확정), 자동추천, 차액표시 |
+| Step 27: 면장/원가 | ✅ 완료 | 3탭(수입면장/부대비용/환율비교), 원가3단계(FOB→CIF→Landed), Badge, LandedCost 미리보기/저장, 부대비용11유형, price-histories Go라우트추가 |
+| Step 28A: 은행/LC+수요예측 | ✅ 완료 | 4탭(한도현황/만기알림/한도변경/LC수요예측), 요약카드4+3개, 사용률bar, Recharts AreaChart, D-Day Badge, 수수료펼침, PO별미개설, 3개월예측+대응방안(D-062) |
+| Step 28B: 대시보드 | ✅ 완료 | 역할별분기(admin=Manager/executive=Executive), 카드6개, BarChart+LineChart, 알림9가지, 미착품/수주잔량/미수금프리뷰, Promise.allSettled 섹션별 독립로딩, 장기재고경고 |
+| Step 29A: 엑셀 양식 다운로드+업로드 미리보기 | ✅ 완료 | 양식7종(입고/출고/매출/면장/부대비용/수주/수금), ExcelJS dynamic import(별도chunk 930KB), 드롭다운+코드표, 업로드파싱→검증→미리보기, 면장2시트탭, 에러행다운로드, 확정등록비활성(29B), D-063/D-064 |
+| Step 29B: 엑셀 확정 등록 + Import API 7개 | ✅ 완료 | 29A즉시수정(통화하드코딩), 지적1(매출outbound_id), 지적2(면장+원가한번에전송), 지적3(B/L기본정보불일치경고), Go Import핸들러7개(inbound/outbound/sales/declarations/expenses/orders/receipts), FK해소+자동계산, ImportResultDialog, ConfirmDialog, 테스트13개PASS |
+| Step 29C: 아마란스10 내보내기 | ✅ 완료 | 입고34컬럼+출고35컬럼 excelize, GET /export/amaranth/inbound·outbound, 거래구분/과세구분 매핑, 외화단가/원화단가 자동계산, 기간선택 AmaranthExportDialog, D-067/D-068 |
+| Step 30: 결재안 자동 생성 6유형 | ✅ 완료 | 6유형카드선택, LC/BL/PO/거래처 기반 데이터조회, 수입통관부가세(CIF×0.1), approvalTemplates 텍스트생성, 미리보기Textarea수정, 클립보드복사, 수동입력(노란배경), Go변경없음 |
+| Step 31: 메모+검색+알림 | ✅ 완료 | Go Note CRUD(소유권검사), 포스트잇 MemoPage+LinkedMemoWidget, Ctrl+K GlobalSearchBar(500ms디바운스), Rust search API연동, SearchPage(이력+예시), useAlerts 분리(useDashboard에서 추출), AlertBell+AlertDropdown, 5분자동갱신, 테스트8개 |
 | Step 32: 배포+검증 | ✅ 완료 | ES256 JWKS인증(D-069), RLS비활성화(D-070), 전체법인합산(D-071), user_profiles 컬럼명 정렬, 구형파일삭제, 프론트Cloudflare+Go/Rust fly.io 3레이어 배포완료 |
 | Step 33: Lightsail 서울 이전 | ✅ 완료 | Fly.io 도쿄→AWS Lightsail 서울(D-072), solarflow3.com 도메인(D-073), Caddy 리버스프록시+자동SSL(D-074), 직접바이너리+systemd, Docker미사용, 대시보드6초→2초 |
 | Step 34: Mac mini 로컬 이전 | ✅ 완료 | PostgREST 로컬(D-075), Caddy 경로변환(D-076), auto-provision(D-077), Tailscale 외부접속(D-078), 프론트 정적서빙(D-079), launchd 5개 서비스, 재부팅테스트 성공 |

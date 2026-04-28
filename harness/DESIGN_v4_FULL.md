@@ -1,7 +1,8 @@
-# SolarFlow 3.0 설계서 v4 — 시공 기준 문서
+# SolarFlow 3.0 설계서 v4 — 과거 GAP 설계 메모
 
-이 문서 = 시공 도면. 이 문서에 없는 변경 금지.
-시공자가 판단할 것 없음. 모든 화면/입력폼/CRUD 완전 정의.
+현재 실행 기준은 `harness/SolarFlow_설계문서_통합판.md`, `harness/PROGRESS.md`, `harness/DECISIONS.md`입니다.
+
+주의(2026-04-28): 이 문서는 2026-04-08 전후 PO/FIFO 구조를 정리한 보조 설계 메모이며, 코드와 1:1로 맞는 현재 정본이 아닙니다. 현재 코드에는 PO→입고 자동채움, `bl_line_items.po_line_id`, `outbound_bl_items`, B/L 출고추적, `lc_line_items`가 반영되어 있고, `bl_shipments.outbound_status`, `outbound_fifo_details`, Rust `fifo-match`는 미구현입니다.
 
 ## 메뉴 구조
 

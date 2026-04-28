@@ -10,9 +10,9 @@
 6. 할당된 TASK 파일
 
 ## 프로젝트 구조
-- backend/ — Go API 게이트웨이 (chi v5, 포트 8080, fly.io solarflow-backend)
-- engine/ — Rust 계산엔진 (Axum 0.8.8, 포트 8081, fly.io solarflow-engine)
-- frontend/ — React + Vite + TypeScript + Tailwind (Phase 4, Cloudflare Pages)
+- backend/ — Go API 게이트웨이 (chi v5, 포트 8080, launchd `com.solarflow.go`)
+- engine/ — Rust 계산엔진 (Axum 0.8.x, 포트 8081, launchd `com.solarflow.engine`)
+- frontend/ — React + Vite + TypeScript + Tailwind (Caddy 정적 서빙, dist/)
 - harness/ — 하네스 파일 (규칙, 설계, 판단 기록)
 
 ## 핵심 원칙
@@ -52,15 +52,16 @@ codesign -f -s - solarflow-go
 launchctl bootout gui/501 ~/Library/LaunchAgents/com.solarflow.go.plist 2>/dev/null || true && launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.solarflow.go.plist
 ```
 - `stop/start`는 코드 서명 문제 해결 불가 → 반드시 `bootout/bootstrap` 사용
-- Rust 엔진 변경 시: `cd ~/solarflow-3/engine && cargo build --release && codesign -f -s - target/release/solarflow-engine && launchctl stop com.solarflow.engine && launchctl start com.solarflow.engine`
+- Rust 엔진 변경 시: `cd ~/solarflow-3/engine && cargo build --release && codesign -f -s - target/release/solarflow-engine && launchctl bootout gui/501 ~/Library/LaunchAgents/com.solarflow.engine.plist 2>/dev/null || true && launchctl bootstrap gui/501 ~/Library/LaunchAgents/com.solarflow.engine.plist`
 - 모든 서비스 라벨: `com.solarflow.go`, `com.solarflow.engine`, `com.solarflow.postgrest`, `com.solarflow.caddy`
-- 프론트엔드는 `npm run dev`가 자동 반영하므로 재시작 불필요
+- 프론트엔드 운영 반영은 `cd ~/solarflow-3/frontend && npm run build` 후 Caddy가 `dist/`를 서빙
 - `go test`, `cargo test`, `npm run build`는 검증일 뿐이고, 실제 반영은 위 3단계
 
 ## DB 연결
-- Supabase PostgreSQL (Session pooler, 포트 5432)
-- Go 풀 약5개, Rust 풀 5개
-- 프로젝트: aalxpmfnsjzmhsfkuxnp.supabase.co
+- 운영 DB: 로컬 PostgreSQL + PostgREST (Go는 supabase-go/PostgREST 경유)
+- 인증: Supabase Auth/JWKS만 사용
+- Rust DB 연결: `SUPABASE_DB_URL` 환경변수로 PostgreSQL 직접 연결, sqlx 풀 5개
+- Supabase 프로젝트: aalxpmfnsjzmhsfkuxnp.supabase.co
 
 ## graphify
 

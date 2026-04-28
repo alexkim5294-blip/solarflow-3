@@ -1,73 +1,41 @@
-# React + TypeScript + Vite
+# SolarFlow Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite + TypeScript + Tailwind 기반 SolarFlow 업무 화면입니다.
 
-Currently, two official plugins are available:
+## 역할
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- 재고, 발주/결제, 입고, 면장/원가, 수주/수금, 출고/판매, 은행/LC, 대시보드 화면 제공
+- Go API(`/api/v1/*`) 호출
+- Supabase Auth 로그인 세션 관리
+- 엑셀 양식 다운로드/업로드 미리보기, 아마란스 내보내기 UI
+- 첨부파일 위젯, 메모, 검색, 결재안 생성 UI
 
-## React Compiler
+## 주요 실행 명령
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
+npm run build
+npm run lint
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 환경변수
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+`.env.example` 기준:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+VITE_SUPABASE_URL=https://aalxpmfnsjzmhsfkuxnp.supabase.co
+VITE_SUPABASE_ANON_KEY=your_anon_key_here
+VITE_API_URL=http://localhost:8080
 ```
+
+## 운영 반영
+
+Mac mini 운영 환경에서는 Caddy가 `frontend/dist/`를 정적 서빙합니다.
+
+```bash
+cd ~/solarflow-3/frontend
+npm run build
+```
+
+개발 중에는 `npm run dev`를 사용할 수 있지만, 운영 반영 기준은 `npm run build`입니다.

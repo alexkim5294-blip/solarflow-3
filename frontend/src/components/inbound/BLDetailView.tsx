@@ -12,6 +12,7 @@ import StatusChanger from './StatusChanger';
 import BLLineTable from './BLLineTable';
 import BLLineForm from './BLLineForm';
 import LinkedMemoWidget from '@/components/memo/LinkedMemoWidget';
+import AttachmentWidget from '@/components/common/AttachmentWidget';
 import BLForm from './BLForm';
 import { saveBLShipmentWithLines } from '@/lib/blShipment';
 import { useBLDetail, useBLLines } from '@/hooks/useInbound';
@@ -33,6 +34,13 @@ function Field({ label, value }: { label: string; value: string | undefined }) {
     </div>
   );
 }
+
+const BL_DOCUMENT_ATTACHMENTS = [
+  { fileType: 'customs_declaration_pdf', title: '면장', uploadLabel: '면장 PDF 업로드' },
+  { fileType: 'commercial_invoice_pdf', title: 'C/I', uploadLabel: 'C/I PDF 업로드' },
+  { fileType: 'bill_of_lading_pdf', title: 'B/L', uploadLabel: 'B/L PDF 업로드' },
+  { fileType: 'packing_list_pdf', title: 'P/L', uploadLabel: 'P/L PDF 업로드' },
+] as const;
 
 export default function BLDetailView({ blId, onBack }: Props) {
   const { data: bl, loading: blLoading, reload: reloadBL } = useBLDetail(blId);
@@ -111,6 +119,7 @@ export default function BLDetailView({ blId, onBack }: Props) {
       <Tabs defaultValue="basic">
         <TabsList>
           <TabsTrigger value="basic">기본정보</TabsTrigger>
+          <TabsTrigger value="documents">서류</TabsTrigger>
           <TabsTrigger value="lines">입고품목</TabsTrigger>
           <TabsTrigger value="customs">부대비용 등록</TabsTrigger>
           <TabsTrigger value="outbound">출고추적</TabsTrigger>
@@ -209,6 +218,27 @@ export default function BLDetailView({ blId, onBack }: Props) {
                   </div>
                 );
               })()}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="documents">
+          <Card>
+            <CardHeader className="pb-2 pt-4">
+              <CardTitle className="text-sm">B/L 서류 보관</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-2 pb-4 lg:grid-cols-2">
+              {BL_DOCUMENT_ATTACHMENTS.map((item) => (
+                <AttachmentWidget
+                  key={item.fileType}
+                  entityType="bl_shipments"
+                  entityId={blId}
+                  fileType={item.fileType}
+                  title={`${bl.bl_number} ${item.title}`}
+                  uploadLabel={item.uploadLabel}
+                  compact
+                />
+              ))}
             </CardContent>
           </Card>
         </TabsContent>

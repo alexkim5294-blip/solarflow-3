@@ -20,6 +20,7 @@ interface Props {
   entityId: string;
   fileType?: string;
   title?: string;
+  description?: string;
   uploadLabel?: string;
   compact?: boolean;
 }
@@ -35,6 +36,7 @@ export default function AttachmentWidget({
   entityId,
   fileType = 'other',
   title = '첨부파일',
+  description = 'PDF 원문을 업무 데이터와 함께 보관합니다',
   uploadLabel = 'PDF 업로드',
   compact = false,
 }: Props) {
@@ -86,9 +88,12 @@ export default function AttachmentWidget({
     try {
       const params = new URLSearchParams({ entity_type: entityType, entity_id: entityId });
       const loadedFiles = await fetchWithAuth<DocumentFile[]>(`/api/v1/attachments?${params}`);
+      const visibleFiles = fileType === 'other'
+        ? loadedFiles
+        : loadedFiles.filter((file) => file.file_type === fileType);
       setAccessLinks({});
-      setFiles(loadedFiles);
-      void primeAccessLinks(loadedFiles);
+      setFiles(visibleFiles);
+      void primeAccessLinks(visibleFiles);
     } catch (err) {
       setError(err instanceof Error ? err.message : '첨부파일을 불러오지 못했습니다');
       setFiles([]);
@@ -100,7 +105,7 @@ export default function AttachmentWidget({
 
   useEffect(() => {
     load();
-  }, [entityType, entityId]);
+  }, [entityType, entityId, fileType]);
 
   const upload = async (file: File | undefined) => {
     if (!file) return;
@@ -178,7 +183,7 @@ export default function AttachmentWidget({
           <h4 className={compact ? 'truncate text-xs font-semibold' : 'text-sm font-semibold'}>
             <FileText className="mr-1.5 inline h-3.5 w-3.5" />{title}
           </h4>
-          {!compact && <p className="text-[11px] text-muted-foreground">PDF 원문을 LC와 함께 보관합니다</p>}
+          {!compact && <p className="text-[11px] text-muted-foreground">{description}</p>}
         </div>
         <Button size="sm" variant="outline" disabled={uploading} onClick={() => inputRef.current?.click()}>
           {uploading ? <Upload className="mr-1 h-3.5 w-3.5 animate-pulse" /> : <Plus className="mr-1 h-3.5 w-3.5" />}

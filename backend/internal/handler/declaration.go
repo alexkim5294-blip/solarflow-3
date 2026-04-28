@@ -18,6 +18,10 @@ type DeclarationHandler struct {
 	DB *supa.Client
 }
 
+type deleteDeclarationRPCRequest struct {
+	DeclarationID string `json:"p_declaration_id"`
+}
+
 // NewDeclarationHandler — DeclarationHandler 생성자
 func NewDeclarationHandler(db *supa.Client) *DeclarationHandler {
 	return &DeclarationHandler{DB: db}
@@ -172,19 +176,12 @@ func (h *DeclarationHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *DeclarationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	if _, _, derr := h.DB.From("cost_details").
-		Delete("", "").
-		Eq("declaration_id", id).
-		Execute(); derr != nil {
-		log.Printf("[면장 삭제] cost_details cascade 실패 declaration_id=%s err=%v — 후속 import_declarations DELETE가 FK 위반으로 실패할 수 있음", id, derr)
-	}
-
-	_, _, err := h.DB.From("import_declarations").
-		Delete("", "").
-		Eq("declaration_id", id).
-		Execute()
-	if err != nil {
-		log.Printf("[면장 삭제 실패] id=%s, err=%v", id, err)
+	if err := callRPC(h.DB, "sf_delete_declaration", deleteDeclarationRPCRequest{DeclarationID: id}); err != nil {
+		log.Printf("[면장 트랜잭션 삭제 실패] id=%s, err=%v", id, err)
+		if isRPCNotFound(err) {
+			response.RespondError(w, http.StatusNotFound, "면장을 찾을 수 없습니다")
+			return
+		}
 		response.RespondError(w, http.StatusInternalServerError, "면장 삭제에 실패했습니다")
 		return
 	}

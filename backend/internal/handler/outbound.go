@@ -45,7 +45,40 @@ func (h *OutboundHandler) insertBLItems(outboundID string, items []model.Outboun
 	}
 }
 
-// fetchBLItems — outbound_bl_items 조회 헬퍼 (bl_shipments 조인 없이 단순 조회)
+type outboundBLNumberRow struct {
+	BLID     string `json:"bl_id"`
+	BLNumber string `json:"bl_number"`
+}
+
+func (h *OutboundHandler) fetchBLNumberMap() map[string]string {
+	data, _, err := h.DB.From("bl_shipments").
+		Select("bl_id, bl_number", "exact", false).
+		Execute()
+	if err != nil {
+		return map[string]string{}
+	}
+	var rows []outboundBLNumberRow
+	if err := json.Unmarshal(data, &rows); err != nil {
+		return map[string]string{}
+	}
+	result := make(map[string]string, len(rows))
+	for _, row := range rows {
+		result[row.BLID] = row.BLNumber
+	}
+	return result
+}
+
+func withBLNumbers(items []model.OutboundBLItem, blNumbers map[string]string) []model.OutboundBLItem {
+	for i := range items {
+		if number, ok := blNumbers[items[i].BLID]; ok {
+			blNumber := number
+			items[i].BLNumber = &blNumber
+		}
+	}
+	return items
+}
+
+// fetchBLItems — outbound_bl_items 조회 헬퍼
 func (h *OutboundHandler) fetchBLItems(outboundID string) []model.OutboundBLItem {
 	data, _, err := h.DB.From("outbound_bl_items").
 		Select("*", "exact", false).
@@ -58,7 +91,26 @@ func (h *OutboundHandler) fetchBLItems(outboundID string) []model.OutboundBLItem
 	if err := json.Unmarshal(data, &items); err != nil {
 		return nil
 	}
-	return items
+	return withBLNumbers(items, h.fetchBLNumberMap())
+}
+
+func (h *OutboundHandler) fetchBLItemsByOutbound() map[string][]model.OutboundBLItem {
+	data, _, err := h.DB.From("outbound_bl_items").
+		Select("*", "exact", false).
+		Execute()
+	if err != nil {
+		return map[string][]model.OutboundBLItem{}
+	}
+	var items []model.OutboundBLItem
+	if err := json.Unmarshal(data, &items); err != nil {
+		return map[string][]model.OutboundBLItem{}
+	}
+	items = withBLNumbers(items, h.fetchBLNumberMap())
+	result := make(map[string][]model.OutboundBLItem)
+	for _, item := range items {
+		result[item.OutboundID] = append(result[item.OutboundID], item)
+	}
+	return result
 }
 
 type outboundOrderProgressRow struct {
@@ -305,6 +357,10 @@ func (h *OutboundHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	outbounds = h.enrichOutbounds(outbounds)
+	blItemsByOutbound := h.fetchBLItemsByOutbound()
+	for i := range outbounds {
+		outbounds[i].BLItems = blItemsByOutbound[outbounds[i].OutboundID]
+	}
 	response.RespondJSON(w, http.StatusOK, outbounds)
 }
 

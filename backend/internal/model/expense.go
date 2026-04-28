@@ -20,6 +20,7 @@ var validExpenseTypes = map[string]bool{
 type IncidentalExpense struct {
 	ExpenseID   string   `json:"expense_id"`
 	BLID        *string  `json:"bl_id"`
+	OutboundID  *string  `json:"outbound_id"`
 	Month       *string  `json:"month"`
 	CompanyID   string   `json:"company_id"`
 	ExpenseType string   `json:"expense_type"`
@@ -27,6 +28,8 @@ type IncidentalExpense struct {
 	Vat         *float64 `json:"vat"`
 	Total       float64  `json:"total"`
 	Vendor      *string  `json:"vendor"`
+	VehicleType *string  `json:"vehicle_type"`
+	Destination *string  `json:"destination"`
 	Memo        *string  `json:"memo"`
 }
 
@@ -34,6 +37,7 @@ type IncidentalExpense struct {
 // 비유: "부대비용 등록 신청서" — 법인, 비용 유형, 금액을 필수 기재
 type CreateExpenseRequest struct {
 	BLID        *string  `json:"bl_id"`
+	OutboundID  *string  `json:"outbound_id"`
 	Month       *string  `json:"month"`
 	CompanyID   string   `json:"company_id"`
 	ExpenseType string   `json:"expense_type"`
@@ -41,6 +45,8 @@ type CreateExpenseRequest struct {
 	Vat         *float64 `json:"vat"`
 	Total       float64  `json:"total"`
 	Vendor      *string  `json:"vendor"`
+	VehicleType *string  `json:"vehicle_type"`
+	Destination *string  `json:"destination"`
 	Memo        *string  `json:"memo"`
 }
 
@@ -62,9 +68,9 @@ func (req *CreateExpenseRequest) Validate() string {
 	if req.Total <= 0 {
 		return "total은 양수여야 합니다"
 	}
-	// 비유: B/L 또는 월(month) 중 하나는 있어야 비용을 어디에 귀속시킬지 알 수 있음
-	if req.BLID == nil && req.Month == nil {
-		return "bl_id 또는 month 중 하나는 필수입니다"
+	// 비유: B/L, 월(month), 출고 중 하나는 있어야 비용을 어디에 귀속시킬지 알 수 있음
+	if req.BLID == nil && req.Month == nil && req.OutboundID == nil {
+		return "bl_id, month, outbound_id 중 하나는 필수입니다"
 	}
 	return ""
 }
@@ -73,6 +79,7 @@ func (req *CreateExpenseRequest) Validate() string {
 // 비유: "부대비용 변경 신청서" — 바꾸고 싶은 항목만 적어서 제출
 type UpdateExpenseRequest struct {
 	BLID        *string  `json:"bl_id,omitempty"`
+	OutboundID  *string  `json:"outbound_id,omitempty"`
 	Month       *string  `json:"month,omitempty"`
 	CompanyID   *string  `json:"company_id,omitempty"`
 	ExpenseType *string  `json:"expense_type,omitempty"`
@@ -80,6 +87,8 @@ type UpdateExpenseRequest struct {
 	Vat         *float64 `json:"vat,omitempty"`
 	Total       *float64 `json:"total,omitempty"`
 	Vendor      *string  `json:"vendor,omitempty"`
+	VehicleType *string  `json:"vehicle_type,omitempty"`
+	Destination *string  `json:"destination,omitempty"`
 	Memo        *string  `json:"memo,omitempty"`
 }
 

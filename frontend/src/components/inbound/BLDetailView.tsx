@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -20,6 +20,7 @@ import { fetchWithAuth } from '@/lib/api';
 import { INBOUND_TYPE_LABEL, type BLLineItem } from '@/types/inbound';
 import type { Manufacturer } from '@/types/masters';
 import BLExpensesTab from './BLExpensesTab';
+import BLOutboundTrackingTab from './BLOutboundTrackingTab';
 
 interface Props {
   blId: string;
@@ -42,6 +43,26 @@ const BL_DOCUMENT_ATTACHMENTS = [
   { fileType: 'packing_list_pdf', title: 'P/L', uploadLabel: 'P/L PDF 업로드' },
 ] as const;
 
+type BLDocumentFileType = typeof BL_DOCUMENT_ATTACHMENTS[number]['fileType'];
+
+function classifyBLDocument(name: string): BLDocumentFileType | null {
+  const lower = name.toLowerCase();
+  const compact = lower.replace(/[\s._()\-]+/g, '');
+  if (lower.includes('면장') || lower.includes('수입신고') || lower.includes('declaration') || lower.includes('customs')) {
+    return 'customs_declaration_pdf';
+  }
+  if (lower.includes('commercial') || lower.includes('invoice') || lower.includes('인보이스') || lower.includes('송장') || compact.includes('ci')) {
+    return 'commercial_invoice_pdf';
+  }
+  if (lower.includes('bill of lading') || lower.includes('선하증권') || compact.includes('billoflading') || compact.includes('bl')) {
+    return 'bill_of_lading_pdf';
+  }
+  if (lower.includes('packing') || lower.includes('패킹') || lower.includes('포장명세') || compact.includes('pl')) {
+    return 'packing_list_pdf';
+  }
+  return null;
+}
+
 export default function BLDetailView({ blId, onBack }: Props) {
   const { data: bl, loading: blLoading, reload: reloadBL } = useBLDetail(blId);
   const { data: lines, loading: linesLoading, reload: reloadLines } = useBLLines(blId);
@@ -51,6 +72,10 @@ export default function BLDetailView({ blId, onBack }: Props) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [manufacturerName, setManufacturerName] = useState<string>('');
+  const documentSetInputRef = useRef<HTMLInputElement | null>(null);
+  const [documentReloadKey, setDocumentReloadKey] = useState(0);
+  const [documentSetUploading, setDocumentSetUploading] = useState(false);
+  const [documentSetError, setDocumentSetError] = useState('');
 
   // 평탄 응답에는 공급사명이 포함되지 않으므로 별도 조회
   useEffect(() => {
@@ -96,6 +121,45 @@ export default function BLDetailView({ blId, onBack }: Props) {
       alert(err instanceof Error ? err.message : '삭제에 실패했습니다');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const uploadDocumentSet = async (files: FileList | null) => {
+    const selected = Array.from(files ?? []);
+    if (selected.length === 0) return;
+
+    const invalid = selected.filter((file) => !file.name.toLowerCase().endsWith('.pdf'));
+    if (invalid.length > 0) {
+      setDocumentSetError('PDF 파일만 업로드할 수 있습니다');
+      if (documentSetInputRef.current) documentSetInputRef.current.value = '';
+      return;
+    }
+
+    const classified = selected.map((file) => ({ file, fileType: classifyBLDocument(file.name) }));
+    const unknown = classified.filter((item) => !item.fileType).map((item) => item.file.name);
+    if (unknown.length > 0) {
+      setDocumentSetError(`서류 종류를 알 수 없습니다: ${unknown.join(', ')}`);
+      if (documentSetInputRef.current) documentSetInputRef.current.value = '';
+      return;
+    }
+
+    setDocumentSetUploading(true);
+    setDocumentSetError('');
+    try {
+      for (const item of classified) {
+        const form = new FormData();
+        form.append('entity_type', 'bl_shipments');
+        form.append('entity_id', blId);
+        form.append('file_type', item.fileType!);
+        form.append('file', item.file);
+        await fetchWithAuth('/api/v1/attachments', { method: 'POST', body: form });
+      }
+      setDocumentReloadKey((key) => key + 1);
+    } catch (err) {
+      setDocumentSetError(err instanceof Error ? err.message : '서류 세트 업로드에 실패했습니다');
+    } finally {
+      setDocumentSetUploading(false);
+      if (documentSetInputRef.current) documentSetInputRef.current.value = '';
     }
   };
 
@@ -225,7 +289,27 @@ export default function BLDetailView({ blId, onBack }: Props) {
         <TabsContent value="documents">
           <Card>
             <CardHeader className="pb-2 pt-4">
-              <CardTitle className="text-sm">B/L 서류 보관</CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-sm">B/L 서류 보관</CardTitle>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={documentSetUploading}
+                  onClick={() => documentSetInputRef.current?.click()}
+                >
+                  <Upload className={`mr-1 h-3.5 w-3.5 ${documentSetUploading ? 'animate-pulse' : ''}`} />
+                  {documentSetUploading ? '업로드 중' : '서류 세트 업로드'}
+                </Button>
+                <input
+                  ref={documentSetInputRef}
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => void uploadDocumentSet(event.target.files)}
+                />
+              </div>
+              {documentSetError && <p className="text-[11px] text-destructive">{documentSetError}</p>}
             </CardHeader>
             <CardContent className="grid grid-cols-1 gap-2 pb-4 lg:grid-cols-2">
               {BL_DOCUMENT_ATTACHMENTS.map((item) => (
@@ -237,6 +321,7 @@ export default function BLDetailView({ blId, onBack }: Props) {
                   title={`${bl.bl_number} ${item.title}`}
                   uploadLabel={item.uploadLabel}
                   compact
+                  reloadKey={documentReloadKey}
                 />
               ))}
             </CardContent>
@@ -267,9 +352,7 @@ export default function BLDetailView({ blId, onBack }: Props) {
         </TabsContent>
 
         <TabsContent value="outbound">
-          <Card><CardContent className="pt-6 pb-6 text-center text-sm text-muted-foreground">
-            출고추적은 Round 4에서 활성화됩니다
-          </CardContent></Card>
+          <BLOutboundTrackingTab blId={blId} companyId={bl.company_id} lines={lines} />
         </TabsContent>
       </Tabs>
 

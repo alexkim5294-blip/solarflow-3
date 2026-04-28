@@ -23,6 +23,7 @@ interface Props {
   description?: string;
   uploadLabel?: string;
   compact?: boolean;
+  reloadKey?: number;
 }
 
 function formatBytes(bytes: number) {
@@ -39,6 +40,7 @@ export default function AttachmentWidget({
   description = 'PDF 원문을 업무 데이터와 함께 보관합니다',
   uploadLabel = 'PDF 업로드',
   compact = false,
+  reloadKey = 0,
 }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [files, setFiles] = useState<DocumentFile[]>([]);
@@ -105,7 +107,7 @@ export default function AttachmentWidget({
 
   useEffect(() => {
     load();
-  }, [entityType, entityId, fileType]);
+  }, [entityType, entityId, fileType, reloadKey]);
 
   const upload = async (file: File | undefined) => {
     if (!file) return;

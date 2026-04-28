@@ -55,6 +55,7 @@ export type ExpenseType =
 export interface Expense {
   expense_id: string;
   bl_id?: string;
+  outbound_id?: string;
   bl_number?: string;
   month?: string;
   company_id: string;
@@ -64,6 +65,8 @@ export interface Expense {
   vat?: number;
   total: number;
   vendor?: string;
+  vehicle_type?: string;
+  destination?: string;
   memo?: string;
 }
 

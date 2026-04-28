@@ -12,6 +12,7 @@ import OutboundCancelFlow from './OutboundCancelFlow';
 import OutboundForm from './OutboundForm';
 import SaleForm from './SaleForm';
 import LinkedMemoWidget from '@/components/memo/LinkedMemoWidget';
+import OutboundTransportCostPanel from './OutboundTransportCostPanel';
 import { useOutboundDetail } from '@/hooks/useOutbound';
 import { fetchWithAuth } from '@/lib/api';
 import { USAGE_CATEGORY_LABEL } from '@/types/outbound';
@@ -168,6 +169,8 @@ export default function OutboundDetailView({ outboundId, onBack }: Props) {
           )}
         </CardContent>
       </Card>
+
+      <OutboundTransportCostPanel outbound={ob} />
 
       <Separator />
 

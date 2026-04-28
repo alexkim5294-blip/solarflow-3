@@ -34,6 +34,11 @@ func (h *ExpenseHandler) List(w http.ResponseWriter, r *http.Request) {
 		query = query.Eq("bl_id", blID)
 	}
 
+	// 비유: ?outbound_id=xxx — 특정 출고의 운송비만 필터
+	if outboundID := r.URL.Query().Get("outbound_id"); outboundID != "" {
+		query = query.Eq("outbound_id", outboundID)
+	}
+
 	// 비유: ?month=2025-03 — 특정 월의 부대비용만 필터
 	if month := r.URL.Query().Get("month"); month != "" {
 		query = query.Eq("month", month)

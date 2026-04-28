@@ -263,7 +263,7 @@ func (h *LCHandler) autoSetPOInProgress(poID string, r *http.Request) {
 		return
 	}
 	var updated []model.PurchaseOrder
-	if json.Unmarshal(data, &updated) == nil && len(updated) > 0 {
+	if err := json.Unmarshal(data, &updated); err == nil && len(updated) > 0 {
 		writeAuditLog(h.DB, r, "purchase_orders", poID, "update", oldSnapshot, auditRawFromValue(updated[0]), "lc_create_auto_in_progress")
 	}
 	log.Printf("[PO in_progress 전환] po_id=%s contracted → in_progress", poID)

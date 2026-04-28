@@ -87,25 +87,22 @@ export default function OrdersPage() {
   const [orderStatusFilter, setOrderStatusFilter] = useState('');
   const [orderCustomerFilter, setOrderCustomerFilter] = useState('');
   const [orderCategoryFilter, setOrderCategoryFilter] = useState('');
-  const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const _loc = useLocation();
   const navigate = useNavigate();
+  const [selectedOrderState, setSelectedOrderState] = useState<{ id: string | null; locationKey: string }>({
+    id: null,
+    locationKey: _loc.key,
+  });
+  const selectedOrder = selectedOrderState.locationKey === _loc.key ? selectedOrderState.id : null;
+  const setSelectedOrder = (id: string | null) => setSelectedOrderState({ id, locationKey: _loc.key });
   // URL 탭 파라미터 읽기 (사이드바 수주/수금 링크 구분)
   const urlTab = new URLSearchParams(_loc.search).get('tab') ?? 'orders';
-  const [activeTab, setActiveTab] = useState(urlTab);
+  const activeTab = urlTab;
   const [orderFormOpen, setOrderFormOpen] = useState(false);
   // 가용재고 배정 → 수주 자동 연동
   const [pendingAllocId, setPendingAllocId] = useState<string | null>(null);
   const [pendingLinkedAllocId, setPendingLinkedAllocId] = useState<string | null>(null); // 연관 미착품 alloc_id
   const [orderFormPrefill, setOrderFormPrefill] = useState<OrderPrefillData | null>(null);
-
-  // URL → 상태 동기화
-  useEffect(() => {
-    const t = new URLSearchParams(_loc.search).get('tab') ?? 'orders';
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setActiveTab(t);
-    setSelectedOrder(null);
-  }, [_loc.key, _loc.search]);
 
   // 가용재고 배정 → 수주 자동 연동: 마운트 시 URL 파라미터 읽어 폼 자동 오픈
   // window.location.href로 이동하므로 컴포넌트가 새로 마운트됨 → 빈 deps 배열 사용
@@ -166,7 +163,7 @@ export default function OrdersPage() {
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const handleTabChange = (tab: string) => {
-    setActiveTab(tab);
+    setSelectedOrder(null);
     navigate(tab === 'orders' ? '/orders' : `/orders?tab=${tab}`, { replace: true });
   };
 
@@ -234,10 +231,11 @@ export default function OrdersPage() {
       order.product_id
     );
     if (incomingOrders.length === 0) {
-      // 빈 결과 즉시 반영 (외부 데이터 변경에 따른 동기화)
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setOrderSourceHints({});
-      return;
+      let cancelled = false;
+      Promise.resolve().then(() => {
+        if (!cancelled) setOrderSourceHints({});
+      });
+      return () => { cancelled = true; };
     }
 
     let cancelled = false;

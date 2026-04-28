@@ -191,7 +191,7 @@ func New(db *supa.Client, engineClient ...*engine.EngineClient) http.Handler {
 			r.Delete("/{id}", matchH.Delete)
 		})
 
-		outboundH := handler.NewOutboundHandler(db)
+		outboundH := handler.NewOutboundHandler(db, engineClient...)
 		r.Route("/outbounds", func(r chi.Router) {
 			r.Get("/", outboundH.List)
 			r.Post("/", outboundH.Create)
@@ -236,6 +236,12 @@ func New(db *supa.Client, engineClient ...*engine.EngineClient) http.Handler {
 			r.Post("/", saleH.Create)
 			r.Get("/{id}", saleH.GetByID)
 			r.Put("/{id}", saleH.Update)
+			r.Delete("/{id}", saleH.Delete)
+		})
+
+		auditH := handler.NewAuditLogHandler(db)
+		r.Route("/audit-logs", func(r chi.Router) {
+			r.Get("/", auditH.List)
 		})
 
 		limitH := handler.NewLimitChangeHandler(db)

@@ -11,7 +11,7 @@
 | DB | 로컬 PostgreSQL + PostgREST (D-075, D-076) |
 | Go 테스트 | 116개 PASS |
 | Rust 테스트 | 75개 PASS |
-| DECISIONS | D-001~D-093 (91개, D-080/D-081 번호 공백) |
+| DECISIONS | D-001~D-095 (93개, D-080/D-081 번호 공백) |
 | launchd | 5개 서비스 자동 시작 |
 
 ---
@@ -115,6 +115,102 @@
 - `harness/run_e2e_smoke.sh` 추가
   - `psql -v ON_ERROR_STOP=1`로 실행하여 SQL 내부 `RAISE EXCEPTION` 발생 시 자동 실패 처리
   - `DATABASE_URL` 또는 `SUPABASE_DB_URL` 환경변수 사용 가능
+
+---
+
+## 2026-04-28 세션 긴급 수정 — 핸들러 에러 처리 + 트랜잭션화
+
+### 생산 데이터 정합성 보강
+
+#### DB / Go API
+- `backend/migrations/036_handler_transaction_rpcs.sql` 추가
+  - 출고 생성/수정/삭제: `sf_create_outbound`, `sf_update_outbound`, `sf_delete_outbound`
+  - PO 삭제: `sf_delete_purchase_order`
+  - 면장 삭제: `sf_delete_declaration`
+  - 수주 출고 진행률: `sf_recalculate_order_progress`
+- Go 핸들러의 다단계 DB 변경을 PostgREST RPC 1회 호출로 전환
+  - 중간 실패 시 PostgreSQL 트랜잭션 전체 롤백
+  - 출고 B/L 연결, 매출 연결 해제/삭제, 수주 진행률 갱신 포함
+- 첨부파일 삭제는 파일을 `.deleting`으로 먼저 이동한 뒤 DB 레코드를 삭제하고, DB 삭제 실패 시 파일을 원위치로 복구
+- 대상 파일의 무시된 `Delete`, `os.Remove`, `json.Unmarshal`, `map[string]interface{}` 패턴 제거
+
+#### 검증
+- `go build ./...` PASS
+- `go vet ./...` PASS
+- `go test ./...` PASS
+- `git diff --check` PASS
+- `lint_rules.sh` PASS (0건)
+
+---
+
+## 2026-04-28 세션 완료 작업 — 프론트엔드 회귀 테스트 기반 구축
+
+### Vitest + Testing Library 도입
+- `frontend`에 `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event` 추가
+- `npm test` / `npm run test:watch` 스크립트 추가
+- `vite.config.ts`에 jsdom 테스트 환경과 `src/test/setup.ts` 공통 polyfill 설정 추가
+
+### 최근 회귀 위험 컴포넌트 테스트 추가
+- `src/test/fixtures.ts`, `src/test/mockApi.ts`: 공통 fixture, Zustand store 초기화, `fetchWithAuth` mock, JSON body 파서 헬퍼 추가
+- `OrderForm.test.tsx`: 가용재고 예약 → 수주 전환 prefill, `customer_hint` 거래처 자동 매칭, 수량/단가/발주번호/현장명 표시, 저장 payload, 미착품→실재고 자동 전환, `alloc_id` 기반 법인 복원 검증
+- `AllocationForm.test.tsx`: 모달 헤더/푸터 고정 + 본문 `overflow-y-auto` 스크롤 구조, 수정 모드 notes의 `[발주번호:X]` 파싱/저장, 현재고+미착품 분할 예약 group_id 검증
+- `POListTable.test.tsx`: PO 라인/LC/TT 집계 우선 로드, 행 펼침 시 B/L lazy-load와 B/L별 MW 표시, `+ L/C 추가`, B/L 행 선택, 초안 PO 삭제 전 T/T 연동 삭제 경고, 빈 목록 액션 검증
+- `POListTable` React key 경고 수정: PO 행 그룹 Fragment에 `key` 부여
+
+### 검증 결과
+- `npm test` 통과: 3개 테스트 파일 / 9개 테스트 PASS
+- `npm run build` 통과
+- `npm run lint`는 기존 프론트 전체 lint 198건으로 실패 (신규 테스트 파일 원인 아님)
+- `graphify update .` 실행 시도했으나 이 worktree에 `graphify` 명령과 `graphify-out/` 디렉터리가 없어 갱신 불가
+
+---
+
+## 2026-04-28 세션 추가 — 감사 로그 + 운영 데이터 취소 보존
+
+### PO/LC/출고/매출 감사 추적
+
+#### DB / Go API
+- `backend/migrations/037_audit_logs_and_soft_cancel.sql` 추가
+  - `audit_logs` 테이블 생성: 대상 테이블, 대상 ID, action(create/update/delete), 요청자 user_id/user_email, API 경로, 변경 전후 JSON 저장
+  - PO/LC 상태에 `cancelled` 허용, `sales.status` 추가
+  - `sf_delete_outbound`, `sf_delete_purchase_order`를 soft cancel 방식으로 재정의
+- `GET /api/v1/audit-logs` 추가: entity_type/entity_id/action/user_id 필터 지원
+- PO/LC/출고/매출 생성·수정·삭제 요청 시 감사 로그 기록
+- 출고/매출 엑셀 Import 생성 건도 `note='excel_import'`로 감사 로그 기록
+
+#### Soft cancel 정책
+- PO DELETE → `purchase_orders.status='cancelled'`
+- LC DELETE → `lc_records.status='cancelled'`
+- 출고 DELETE → `outbounds.status='cancelled'`, 출고 기준 매출은 취소 처리 또는 수주 기준 매출의 outbound 연결 해제
+- 매출 DELETE → `sales.status='cancelled'`
+- Rust 마진/미수금/단가추이/검색 계산에서 취소 매출 제외
+
+#### 프론트엔드
+- PO/LC/출고 삭제 문구를 취소 처리로 변경
+- PO/LC/매출 타입에 cancelled 상태 반영
+
+#### 검증
+- `backend`: `go test ./...`, `go vet ./...`, `go build ./...` PASS
+- `engine`: `cargo test` PASS
+- `frontend`: `npm run build`는 현재 환경에 `tsc`가 없어 실행 실패
+- DB 마이그레이션 적용은 현재 환경에 `psql`이 없어 미실행
+- `graphify update .`는 현재 환경에 `graphify`가 없어 미실행
+
+---
+
+## 2026-04-28 세션 안정성 수정 — 부분 실패/재고 검증/프론트 예외
+
+### DB / Go API
+- LC 등록/라인 저장과 LC 라인 교체 수정을 PostgREST RPC 트랜잭션으로 전환
+- PO 삭제, 출고 등록/수정/삭제는 기존 핸들러 RPC 흐름 위에서 중간 실패 시 전체 롤백 유지
+- 출고 Create/Update 전에 Rust 재고 집계 결과로 active 출고 가용재고 부족 차단
+- LC RPC 응답 본문 처리를 위해 PostgREST RPC 실패 상태를 Go error로 반환하는 `internal/dbrpc` 추가
+
+### 프론트엔드 / 검증
+- 공통 fetch가 204/빈 응답/JSON 아닌 성공 응답을 안전하게 처리
+- 전체 법인 계산 중 일부 법인 실패를 더 이상 조용히 merge하지 않고 오류로 노출
+- OrdersPage setter 선언 순서와 SearchInput render 중 ref 갱신 lint 후보 수정
+- `.gitattributes`의 shell LF 규칙으로 검증 스크립트 CRLF 회귀 방지
 
 ---
 
@@ -254,11 +350,12 @@
 3. **첨부파일 운영 검증** — `SOLARFLOW_FILE_ROOT` 저장 경로, PDF 미리보기/다운로드/삭제 권한 점검
 4. **출고 운송비 실사용 검증** — 출고 상세 운송비 패널과 결재안 운송비 월정산 데이터 흐름 확인
 5. **수요예측 실사용 검증** — `module_demand_forecasts` 수동 계획이 재고/수급전망 판단에 맞게 보이는지 확인
+6. **프론트엔드 회귀 테스트 확장** — Vitest 기반 9개 회귀 테스트는 구축 완료. 아직 전체 컴포넌트/useEffect 커버리지는 낮으므로 주요 CRUD 폼과 페이지 단위 테스트 추가 필요
 
 ### 중기 작업
-6. 전체 UI 색상/아이콘 개선 (사용자 요청: 단조로운 디자인 개선, 밤/낮 배경색 등)
-7. PODetailView 종합정보 LC 개설 38.82 MW 표시 정확성 확인 (실제 데이터 2개 LC 합계)
-8. 코드 주석 TODO 중 실제 Rust 연동이 끝난 항목(LandedCostPanel 등) 표현 정리
+7. 전체 UI 색상/아이콘 개선 (사용자 요청: 단조로운 디자인 개선, 밤/낮 배경색 등)
+8. PODetailView 종합정보 LC 개설 38.82 MW 표시 정확성 확인 (실제 데이터 2개 LC 합계)
+9. 코드 주석 TODO 중 실제 Rust 연동이 끝난 항목(LandedCostPanel 등) 표현 정리
 
 ### Phase 확장 미해결 (장기)
 - LC 수수료 수동 보정 (D-030) — 코드 앵커: `backend/internal/handler/lc.go`

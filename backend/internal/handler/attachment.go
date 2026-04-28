@@ -179,13 +179,13 @@ func (h *AttachmentHandler) Create(w http.ResponseWriter, r *http.Request) {
 	size, copyErr := io.Copy(out, io.LimitReader(file, maxAttachmentBytes+1))
 	closeErr := out.Close()
 	if copyErr != nil || closeErr != nil {
-		_ = os.Remove(storedPath)
+		removeStoredFile(storedPath)
 		log.Printf("[첨부파일 저장 실패] copy=%v close=%v", copyErr, closeErr)
 		response.RespondError(w, http.StatusInternalServerError, "첨부파일 저장 중 오류가 발생했습니다")
 		return
 	}
 	if size > maxAttachmentBytes {
-		_ = os.Remove(storedPath)
+		removeStoredFile(storedPath)
 		response.RespondError(w, http.StatusBadRequest, "첨부파일은 25MB 이하만 업로드할 수 있습니다")
 		return
 	}
@@ -211,7 +211,7 @@ func (h *AttachmentHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Insert(req, false, "", "", "").
 		Execute()
 	if err != nil {
-		_ = os.Remove(storedPath)
+		removeStoredFile(storedPath)
 		log.Printf("[첨부파일 메타데이터 등록 실패] %v", err)
 		response.RespondError(w, http.StatusInternalServerError, "첨부파일 정보를 저장할 수 없습니다")
 		return
@@ -219,7 +219,7 @@ func (h *AttachmentHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var created []model.DocumentFile
 	if err := json.Unmarshal(data, &created); err != nil || len(created) == 0 {
-		_ = os.Remove(storedPath)
+		removeStoredFile(storedPath)
 		log.Printf("[첨부파일 등록 결과 디코딩 실패] %v", err)
 		response.RespondError(w, http.StatusInternalServerError, "첨부파일 등록 결과를 확인할 수 없습니다")
 		return
@@ -309,19 +309,43 @@ func (h *AttachmentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, _, err := h.DB.From("document_files").
+	path, err := safeStoredPath(file.StoredPath)
+	if err != nil {
+		log.Printf("[첨부파일 삭제 경로 검증 실패] file_id=%s err=%v", file.FileID, err)
+		response.RespondError(w, http.StatusInternalServerError, "첨부파일 경로가 올바르지 않습니다")
+		return
+	}
+
+	deletingPath := path + ".deleting"
+	fileMoved := false
+	if err := os.Rename(path, deletingPath); err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("[첨부파일 삭제 대기 이동 실패] file_id=%s path=%s err=%v", file.FileID, path, err)
+			response.RespondError(w, http.StatusInternalServerError, "첨부파일 실제 파일 삭제 준비에 실패했습니다")
+			return
+		}
+	} else {
+		fileMoved = true
+	}
+
+	_, _, err = h.DB.From("document_files").
 		Delete("", "").
 		Eq("file_id", file.FileID).
 		Execute()
 	if err != nil {
-		log.Printf("[첨부파일 삭제 실패] %v", err)
+		if fileMoved {
+			if restoreErr := os.Rename(deletingPath, path); restoreErr != nil {
+				log.Printf("[첨부파일 삭제 실패 후 파일 복구 실패] file_id=%s path=%s err=%v", file.FileID, path, restoreErr)
+			}
+		}
+		log.Printf("[첨부파일 DB 레코드 삭제 실패] file_id=%s err=%v", file.FileID, err)
 		response.RespondError(w, http.StatusInternalServerError, "첨부파일 삭제에 실패했습니다")
 		return
 	}
 
-	if path, err := safeStoredPath(file.StoredPath); err == nil {
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			log.Printf("[첨부파일 물리 파일 삭제 실패] %v", err)
+	if fileMoved {
+		if err := os.Remove(deletingPath); err != nil && !os.IsNotExist(err) {
+			log.Printf("[첨부파일 삭제 완료 후 파일 정리 실패] file_id=%s path=%s err=%v", file.FileID, deletingPath, err)
 		}
 	}
 
@@ -375,6 +399,12 @@ func sanitizeDisplayFileName(name string) string {
 	return name
 }
 
+func removeStoredFile(path string) {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		log.Printf("[첨부파일 임시 파일 정리 실패] path=%s err=%v", path, err)
+	}
+}
+
 func safeStoredPath(storedPath string) (string, error) {
 	root, err := filepath.Abs(attachmentRoot())
 	if err != nil {
@@ -411,7 +441,9 @@ func signAttachmentToken(fileID, disposition string, expiresAt int64) (string, e
 	}
 	payload := fmt.Sprintf("%s:%s:%d", fileID, disposition, expiresAt)
 	mac := hmac.New(sha256.New, []byte(secret))
-	_, _ = mac.Write([]byte(payload))
+	if _, err := mac.Write([]byte(payload)); err != nil {
+		return "", err
+	}
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
 }
 

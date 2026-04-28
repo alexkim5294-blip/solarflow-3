@@ -486,3 +486,16 @@
 - **결정**: 전체 검증과 별도로 `scripts/verify_changed.sh`를 둔다. 변경 파일 경로를 기준으로 backend, engine, frontend, shell syntax 검증만 선택 실행하고, 알 수 없는 경로가 바뀌면 `verify_all.sh`로 자동 전환한다.
 - **이유**: 모든 작업마다 Go/Rust/프론트 전체 검증을 돌리면 UI 단순 변경이나 문서 변경에서도 시간이 불필요하게 든다. 변경 범위에 맞는 검증을 먼저 돌리고, 릴리즈/PR 전에는 전체 검증을 쓰는 2단 구조가 개발 속도와 안정성의 균형이 좋다.
 - **날짜**: 2026-04-28
+
+## D-094: 핸들러 다단계 변경은 PostgREST RPC 트랜잭션으로 처리
+- **결정**: LC 본문+라인 저장, 출고 생성/수정/삭제, PO 삭제, 면장 삭제처럼 여러 테이블을 함께 변경하는 핸들러는 Go에서 순차 호출하지 않고 PostgreSQL 함수 1회 호출로 묶는다.
+- **이유**: Go에서 여러 PostgREST 요청을 순서대로 보내면 중간 실패 시 일부 테이블만 변경될 수 있다. PostgreSQL 함수는 단일 문장 트랜잭션으로 실행되어 실패 시 전체 롤백되므로 생산 데이터 정합성 위험을 줄인다.
+- **범위**: `sf_create_lc_with_lines`, `sf_update_lc_with_lines`, `sf_create_outbound`, `sf_update_outbound`, `sf_delete_outbound`, `sf_delete_purchase_order`, `sf_delete_declaration`, `sf_recalculate_order_progress`.
+- **운영 기준**: 함수 추가/변경 후 PostgREST 스키마 캐시를 갱신해야 한다. 출고 등록/수정은 저장 전에 Rust 재고 집계 결과로 active 출고의 가용재고를 검증한다.
+- **날짜**: 2026-04-28
+
+## D-095: 운영 데이터 감사 로그 + soft cancel
+- **결정**: PO, LC, 출고, 매출은 `audit_logs`에 create/update/delete 요청자와 변경 전후 JSON을 남긴다. DELETE API는 실제 삭제 대신 업무 테이블의 상태를 `cancelled`로 바꾸는 soft cancel로 처리한다.
+- **이유**: 운영 데이터는 재고, 미착, 한도, 매출, 수금 분석에 연결되므로 실제 삭제 시 “누가 무엇을 지웠는지”와 연결 이력을 잃는다. 취소 상태로 보존하면 실무 오류 정정과 감사 추적이 가능하다.
+- **운영 기준**: `audit_logs.action='delete'`는 API 삭제 요청을 뜻한다. 실제 업무 행은 삭제되지 않고 `purchase_orders.status='cancelled'`, `lc_records.status='cancelled'`, `outbounds.status='cancelled'`, `sales.status='cancelled'`로 남긴다. 계산/분석 쿼리는 취소 매출을 기본 집계에서 제외한다.
+- **날짜**: 2026-04-28

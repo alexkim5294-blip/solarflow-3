@@ -233,10 +233,9 @@ export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC,
             const lcUsdPct   = a && a.totalUsd > 0 ? Math.min(100, (a.lcUsd / a.totalUsd) * 100) : 0;
 
             return (
-              <>
+              <Fragment key={po.po_id}>
                 {/* ── 메인 행 ── */}
                 <tr
-                  key={po.po_id}
                   className="border-t hover:bg-muted/20 transition-colors cursor-pointer"
                   onClick={() => toggle(po.po_id)}
                 >
@@ -394,7 +393,7 @@ export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC,
                                 setDeletingId(null);
                               }
                             }}
-                          >{deletingId === po.po_id ? '…' : '삭제'}</button>
+                          >{deletingId === po.po_id ? '…' : '취소 처리'}</button>
                         </div>
                       </div>
                     ) : (
@@ -406,7 +405,7 @@ export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC,
                         {po.status === 'draft' && onDelete && (
                           <Button variant="ghost" size="icon"
                             className="h-7 w-7 text-muted-foreground hover:text-red-500"
-                            title="삭제 (초안만 가능)"
+                            title="취소 처리"
                             onClick={() => { setPendingDeleteId(po.po_id); setDeleteError({}); }}>
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
@@ -684,7 +683,7 @@ export default function POListTable({ items, onDetail, onNew, onEditLC, onNewLC,
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             );
           })}
         </tbody>

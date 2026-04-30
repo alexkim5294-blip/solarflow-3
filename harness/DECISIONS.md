@@ -444,7 +444,7 @@
 - **결정**: admin이 설정 화면에서 역할(5종)별로 메뉴·민감정보 접근을 체크박스로 직접 설정. DB에 저장하여 런타임에 적용.
 - **구조**:
   - DB 테이블: `permission_settings (menu_key, role, allowed boolean)`
-  - 메뉴 키: procurement, lc, inbound, inventory, orders, outbound, receipts, dashboard, banking, customs, masters, search, memo, approval
+  - 메뉴 키: procurement, lc, inbound, inventory, orders, outbound, receipts, dashboard, banking, customs, masters, search, ocr, memo, approval
   - 민감정보 키: feature:show_price (단가), feature:show_margin (이익률/이익액), feature:show_full_dashboard
   - Go API: GET/PUT /api/v1/settings/permissions
   - 프론트: 설정 화면에서 역할×메뉴 매트릭스 테이블, 체크박스로 토글
@@ -500,7 +500,13 @@
 - **운영 기준**: `audit_logs.action='delete'`는 API 삭제 요청을 뜻한다. 실제 업무 행은 삭제되지 않고 `purchase_orders.status='cancelled'`, `lc_records.status='cancelled'`, `outbounds.status='cancelled'`, `sales.status='cancelled'`로 남긴다. 계산/분석 쿼리는 취소 매출을 기본 집계에서 제외한다.
 - **날짜**: 2026-04-28
 
-## D-096: 아마란스 웹 출고 업로드 실물 양식 + RPA 작업 대기열
+## D-096: OCR은 자동 저장 전 미리보기 워크벤치로 내장
+- **결정**: `../module` 프로젝트의 PaddleOCR/RapidOCR ONNX sidecar 방식을 SolarFlow에 내장하되, OCR 결과를 PO/LC/B/L/면장 등에 즉시 저장하지 않고 `/ocr` 화면의 원문 검토 워크벤치로 먼저 제공한다.
+- **이유**: C/I, 면장, 규격서 양식이 제조사·기관마다 다르고, 잘못 읽은 단가·수량·환율은 원가와 재고에 직접 영향을 준다. 따라서 자동 등록보다 "추출 → 사람이 검토 → 수동 반영" 흐름이 운영 리스크가 낮다.
+- **운영 기준**: `POST /api/v1/ocr/extract`는 이미지/PDF를 받아 PaddleOCR 결과의 원문 텍스트, 줄별 신뢰도, 좌표를 반환한다. `GET /api/v1/ocr/health?warm=1`로 sidecar와 모델 로드를 사전 점검하고, `scripts/setup_ocr_sidecar.sh`로 Python 런타임을 재현 가능하게 설치한다. OCR 결과 자동 저장과 제조사별 좌표 파서는 실사용 서류 샘플이 충분히 쌓인 뒤 별도 TASK로 확장한다.
+- **날짜**: 2026-04-30
+
+## D-097: 아마란스 웹 출고 업로드 실물 양식 + RPA 작업 대기열
 - **결정**: 출고 아마란스 export는 실제 웹 `출고등록엑셀업로드` 파일 구조에 맞춰 1행 한글헤더, 2행 ERP코드, 3행 타입/길이/필수 설명, 4행부터 데이터로 생성한다. 출고 담당자코드(`PLN_CD`)는 기본 `A001`, 관리구분(`MGMT_CD`)은 기본 `LS10`, 부가세포함단가(`VAT_UM`)는 실물 샘플과 동일하게 공란으로 둔다. 운영 값이 바뀌면 `AMARANTH_DEFAULT_PLN_CD`, `AMARANTH_OUTBOUND_MGMT_CD` 환경변수로 덮어쓴다.
 - **이유**: 2026-04-30 아마란스 웹에서 내려받은 `출고등록엑셀업로드_ExcelUpload_20260430.xlsx`가 기존 SolarFlow export보다 3행 설명줄이 1행 더 있고, 샘플 데이터가 `A001`/`LS10`/`VAT_UM 공란` 정책으로 업로드되어 있었다. 실물 양식과 행 시작점이 다르면 RPA 파일 업로드 성공률이 낮아진다.
 - **작업 대기열**: `amaranth_upload_jobs`에 생성 파일 경로, SHA-256, 상태(`pending/running/uploaded/failed/manual_required/cancelled`), 생성자, 시도 횟수, 업로드 결과 메시지를 저장한다. 동일한 `job_type + file_sha256`은 중복 작업을 만들지 않아 같은 엑셀 파일의 이중 업로드를 방지한다.
